@@ -1,23 +1,37 @@
 # Migraciones MPCF
 
-Este directorio contendrá las migraciones SQL oficiales versionadas del proyecto.
+Este directorio está preparado para recibir las migraciones SQL oficiales versionadas del proyecto.
 
-## Propósito
+## Estado actual del repositorio
 
-- mantener el esquema de PostgreSQL/Supabase bajo control versionado
-- registrar cambios de forma trazable y reproducible
-- establecer la fuente oficial de evolución del esquema
-- asegurar que los cambios estructurales se realicen mediante migraciones versionadas
+Actualmente, en esta carpeta solo existe este archivo de documentación:
 
-## Convención
+- README.md
 
-Las migraciones deben seguir el patrón oficial de numeración MPCF, por ejemplo:
+No existen archivos SQL físicos de migraciones reales dentro de `database/migrations/` en el repositorio actual.
 
-- MPCF-001
-- MPCF-002
-- MPCF-003
-- MPCF-020
+## Migraciones disponibles físicamente
+
+No hay migraciones SQL reales disponibles en esta carpeta en el estado actual del repositorio.
+
+## Migraciones documentadas pero pendientes de incorporar
+
+La documentación del proyecto identifica migraciones MPCF desde MPCF-001 hasta MPCF-018, y además indica que MPCF-019 está preparado pero pendiente de ejecución/confirmación.
+
+Eso significa que estas migraciones están documentadas como parte del plan arquitectónico del proyecto, pero no cuentan con archivos SQL reales presentes en el repositorio actual.
+
+## Reglas de trabajo
+
+- no deben inventarse migraciones faltantes
+- no deben reconstruirse SQL a partir de suposiciones
+- no deben crearse archivos vacíos para simular migraciones existentes
+- no debe marcarse una migración como ejecutada solo porque aparece en documentación
+- la fuente oficial de cada migración debe ser su SQL real y versionado, cuando exista físicamente en el repositorio
+
+## Fuente oficial
+
+Las migraciones deben ser la fuente oficial para evolucionar el esquema de PostgreSQL/Supabase. Cualquier cambio estructural del backend debe hacerse mediante una migración real y versionada, no mediante edición manual directa.
 
 ## Regla importante
 
-Las migraciones deben ser la fuente oficial para evolucionar el esquema. No se inventan migraciones ni SQL que aún no existan en el repositorio.
+La ausencia de un archivo SQL real en el repositorio significa que esa migración no está incorporada como implementación efectiva. El repositorio debe reflejar únicamente lo que existe físicamente, y cualquier migración pendiente debe incorporarse formalmente cuando se disponga de su SQL real y versionado.
