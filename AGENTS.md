@@ -332,41 +332,126 @@ Reglas:
 
 ## 11. Migraciones SQL
 
-### 11.1 Requisito general
+### 11.1 Estado real verificado al 13-09-2026
 Las migraciones deben usar identificadores secuenciales MPCF.
 
-Ejemplos existentes:
-- MPCF-001 SECURITY_CORE_V1
-- MPCF-002 RLS_VERIFICATION
-- MPCF-003 ADMIN_BOOTSTRAP
-- MPCF-004 AGRICULTURAL_CORE_V1
-- MPCF-005 EXTERNAL_REFERENCES_V2
-- MPCF-006
-- MPCF-007
-- MPCF-008 FIRST_REAL_AGRICULTURAL_RECORD_P19_V3
-- MPCF-009 BIOMASS_RECEPTION_AND_BIG_BAGS_V1
-- MPCF-010 FIRST_REAL_BIOMASS_RECEPTION_P19_V2
-- MPCF-011
-- MPCF-012
-- MPCF-013
-- MPCF-014
-- MPCF-015
-- MPCF-016 REALTIME_CORE
-- MPCF-017 TRACEABILITY_READ_GRANTS
-- MPCF-018 PROVIDER_MASTER_V1
-- MPCF-019 RECEIPTION_TRANSACTION_V1 está preparado pero todavía debe considerarse pendiente de ejecución hasta que sea confirmado
+Matriz real del proyecto:
+- MPCF-001 — Ejecutada online
+- MPCF-002 — Ejecutada online
+- MPCF-003 — Ejecutada online
+- MPCF-004 — Ejecutada online
+- MPCF-005 — Ejecutada online
+- MPCF-006 — Ejecutada online
+- MPCF-007 — Ejecutada online
+- MPCF-008 — Ejecutada online
+- MPCF-009 — Ejecutada online
+- MPCF-010 — Ejecutada online
+- MPCF-011 — Ejecutada online
+- MPCF-012 — Ejecutada online
+- MPCF-013 — Ejecutada online
+- MPCF-014 — Ejecutada online
+- MPCF-015 — Ejecutada online
+- MPCF-016 — Ejecutada online + SQL físico en repo (`MPCF-016_REALTIME_CORE_V1.sql`)
+- MPCF-017 — Ejecutada online
+- MPCF-018 — Ejecutada online + SQL físico en repo (`MPCF-018_PROVIDER_MASTER_V1.sql`)
+- MPCF-019 — SQL físico en repo (`MPCF-019_RECEIPTION_TRANSACTION_V1.sql`); ejecución NO CONFIRMADA en este corte
+- MPCF-020 — Ejecutada online + SQL físico en repo + validación funcional (`MPCF-020_USER_CONTEXT_RPC_V1.sql`)
 
-La siguiente migración nueva será:
-- MPCF-020
+### 11.2 Estado real de MPCF-020
+MPCF-020 USER_CONTEXT_RPC_V1
 
-### 11.2 Reglas de migración
+Estado:
+- EJECUTADA Y VALIDADA
+
+RPC:
+- `public.get_current_user_context()`
+
+Función:
+- devuelve `user_id`, `full_name`, `organization_id`, `organization_name`, `organization_code` y `roles`
+- usa `SECURITY DEFINER`
+- usa `auth.uid()`
+- no recibe `user_id` externo
+- `EXECUTE` para `authenticated`
+- `anon` revocado
+- tablas sensibles de identidad no expuestas directamente al frontend
+
+Resultado funcional confirmado:
+- el frontend publicado muestra correctamente `TRAZIX HG` y `SUPERADMIN`
+
+### 11.3 Estado real de la Data API
+Data API:
+- HABILITADO
+
+Schemas:
+- `public`: EXPUESTO
+- `private`: NO EXPUESTO
+- `Automatically expose new tables`: DESACTIVADO
+- Tablas expuestas: 16 de 24
+- Funciones expuestas: 1 de 6
+- Función expuesta: `public.get_current_user_context`
+
+### 11.4 Dashboard y autenticación
+Dashboard:
+- consulta datos reales desde Supabase
+- validado: 1 lote agrícola, 2 recepciones, 2 producciones, 1 producto/ISOL
+
+Autenticación:
+- Supabase Auth real operativo
+- Login real probado
+- Logout probado
+- Usuario administrativo real: TRAZIX HG / SUPERADMIN
+- contexto recuperado mediante RPC
+- el frontend no depende de consultas directas a `profiles`, `user_roles`, `organizations` ni `roles` para construir contexto del usuario
+
+### 11.5 Caso real confirmado
+P19
+→ L2
+→ MERLOT
+→ PILVICSA
+→ cosecha 11-02-2026
+→ 626 kg biomasa fresca
+→ recepción REC-20260211-001
+→ COD054
+→ 626 kg consumidos
+→ proceso
+→ 7.670 kg aislado
+→ pureza 99.9%
+→ ISOL 04126
+
+La relación COD054 → ISOL04126 se documenta como relación técnica demostrada, no como reconstrucción completa de toda la genealogía histórica de ISOL04126.
+
+### 11.6 Proveedores
+Proveedor Master:
+- ECUACANNABIS
+- NEW LIFE
+- PILVICSA
+- CANNANGOLD
+- HEOMGROUP
+
+Clasificación: EXTERNO. La clasificación interna GRUPO/EXTERNO no debe mostrarse al proveedor.
+
+### 11.7 Reglas de migración
 - usar numeración secuencial
 - mantener nombres claros y legibles
 - documentar el propósito de cada migración
 - no mezclar cambios de negocio con cambios operativos sin documentación
 - mantener compatibilidad hacia atrás cuando aplique
 - no ejecutar migraciones destructivas sin autorización explícita
+- distinguir siempre entre ejecución en Supabase y SQL físico en GitHub
+- no inventar SQL físicos ni marcar una migración como ejecutada sin evidencia
 - trabajar con SQL versionado y trazable
+
+### 11.8 Regla crítica de documentación
+Nunca escribir “implementado” si solo está diseñado.
+Nunca escribir “SQL disponible” si el archivo no existe físicamente.
+Nunca escribir “migración ejecutada” si solo existe el archivo y no hay confirmación.
+
+Los estados deben distinguirse siempre como:
+- DISEÑADO
+- PREPARADO
+- VERSIONADO
+- EJECUTADO
+- VALIDADO
 
 ---
 
