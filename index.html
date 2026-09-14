@@ -47,7 +47,8 @@ input,select,textarea{width:100%;padding:10px;background:#081923;color:#f1f7f9;b
 <script>
 const SEED={"cultivo": [{"id": "P19", "proveedor": "PILVICSA", "variedad": "MERLOT", "siembra": "2025-09-05", "estado": "CERRADO", "ref_ext": "P19", "nota": "Lote agrícola de referencia para trazabilidad de COD054."}], "cosechas": [{"id": "COS-P19-001", "lote": "P19", "cuadrante": "L2", "proveedor": "PILVICSA", "variedad": "MERLOT", "fecha": "2026-02-11", "kg_cosechados": 917, "kg_recibidos": 626, "estado": "RECIBIDA", "ref_ext": "P19"}], "recepciones": [{"id": "REC-00054-01", "fecha": "2026-02-11", "proveedor": "ECUACANNABIS", "variedad": "MERLOT", "estado": "FRESCA", "kg": 626, "cod_destino": "054", "ref_ext": "P19"}, {"id": "REC-00054-02", "fecha": "2026-02-11", "proveedor": "HEOMGROUP", "variedad": "COVENANT", "estado": "FRESCA", "kg": 165, "cod_destino": "054", "ref_ext": "EXTERNO-SIN-PUENTE"}], "disponibilidad": [{"id": "STK-0001", "material": "Biomasa fresca", "ref_ext": "P19", "kg_disponibles": 626, "ubicacion": "Bodega MP", "estado": "DISPONIBLE"}, {"id": "STK-0002", "material": "Biomasa fresca", "ref_ext": "EXTERNO-SIN-PUENTE", "kg_disponibles": 165, "ubicacion": "Bodega MP", "estado": "DISPONIBLE"}], "producciones": [{"id": "PROD-20260211-V-054", "fecha": "2026-02-11", "turno": "V", "cod": "054", "estado": "CERRADA", "compound_id": "11feb2026V054", "nota": "Producción real de prueba."}, {"id": "PROD-20260801-M-128", "fecha": "2026-08-01", "turno": "M", "cod": "128", "estado": "CERRADA", "compound_id": "01ago2026M128", "nota": "Producción real de prueba."}], "consumos": [{"id": "CON-054-01", "produccion": "PROD-20260211-V-054", "stock": "STK-0001", "ref_ext": "P19", "kg": 626, "tipo": "CONSUMO", "fecha": "2026-02-11"}], "outputs": [{"id": "OUT-054-01", "produccion": "PROD-20260211-V-054", "material": "Extracto/intermedio", "cantidad": 7.67, "unidad": "kg", "destino": "Proceso posterior"}], "isol": [{"id": "ISOL 04126", "fecha": "2026-08-07", "estado": "DESPACHADO", "cantidad_g": 105000, "autorizado": "GERENCIA"}]};
 const DB=JSON.parse(localStorage.getItem('MPCF_DEMO_DB')||JSON.stringify(SEED));
-const AUTH_STATE={client:null,session:null,profile:null,organization:null,roles:[]};
+const AUTH_STATE={client:null,session:null,profile:null,organization:null,roles:[],contextSessionKey:null,contextPromise:null};
+const CONSUME_STATE={pending:false};
 function save(){localStorage.setItem('MPCF_DEMO_DB',JSON.stringify(DB));}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 function toast(t){let x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),1800);}
@@ -56,13 +57,13 @@ function closeModal(){document.getElementById('modal').classList.remove('show')}
 function id(prefix){return prefix+'-'+Date.now().toString(36).toUpperCase()}
 function hasSupabaseConfig(){const url=(window.MPCF_CONFIG&&window.MPCF_CONFIG.supabaseUrl||'').trim();const key=(window.MPCF_CONFIG&&window.MPCF_CONFIG.supabaseAnonKey||'').trim();const normalizedUrl=url.replace(/\/+$/, '');return !!url && !!key && !url.includes('YOUR_') && !key.includes('YOUR_') && /^https:\/\/[a-z0-9-]+\.supabase\.co(?:\/)?$/i.test(normalizedUrl);}
 function getSupabaseClient(){if(!hasSupabaseConfig()||!window.supabase||!window.supabase.createClient)return null;return window.supabase.createClient(window.MPCF_CONFIG.supabaseUrl, window.MPCF_CONFIG.supabaseAnonKey, {auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});}
-async function loginWithSupabase(){const email=document.getElementById('loginEmail').value.trim();const password=document.getElementById('loginPassword').value;if(!email||!password){renderLoginScreen('Debes introducir email y contraseña.');return;}if(!hasSupabaseConfig()){renderLoginScreen('Falta la configuración pública de Supabase. Completa window.MPCF_CONFIG.supabaseUrl y window.MPCF_CONFIG.supabaseAnonKey.');return;}AUTH_STATE.client=getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('No se pudo inicializar Supabase Auth. Revisa la configuración pública.');return;}const { data, error } = await AUTH_STATE.client.auth.signInWithPassword({ email, password });if(error){renderLoginScreen(error.message || 'Credenciales incorrectas.');return;}if(data && data.session){applyAuthenticatedSession(data.session);}}
-async function logoutFromSupabase(){if(!AUTH_STATE.client){AUTH_STATE.session=null;renderLoginScreen('Sesión cerrada.');return;}await AUTH_STATE.client.auth.signOut();AUTH_STATE.session=null;AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];renderLoginScreen('Sesión cerrada correctamente.');}
+async function loginWithSupabase(){const email=document.getElementById('loginEmail').value.trim();const password=document.getElementById('loginPassword').value;if(!email||!password){renderLoginScreen('Debes introducir email y contraseña.');return;}if(!hasSupabaseConfig()){renderLoginScreen('Falta la configuración pública de Supabase. Completa window.MPCF_CONFIG.supabaseUrl y window.MPCF_CONFIG.supabaseAnonKey.');return;}AUTH_STATE.client=getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('No se pudo inicializar Supabase Auth. Revisa la configuración pública.');return;}const { data, error } = await AUTH_STATE.client.auth.signInWithPassword({ email, password });if(error){renderLoginScreen(error.message || 'Credenciales incorrectas.');return;}if(data && data.session){await applyAuthenticatedSession(data.session);}}
+async function logoutFromSupabase(){if(!AUTH_STATE.client){AUTH_STATE.session=null;AUTH_STATE.contextSessionKey=null;AUTH_STATE.contextPromise=null;renderLoginScreen('Sesión cerrada.');return;}await AUTH_STATE.client.auth.signOut();AUTH_STATE.session=null;AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];AUTH_STATE.contextSessionKey=null;AUTH_STATE.contextPromise=null;renderLoginScreen('Sesión cerrada correctamente.');}
 async function fetchUserContext(session){const { data, error } = await AUTH_STATE.client.rpc('get_current_user_context');if(error || !data){return { profile:null, organization:null, roles:[] };}const profile = data && data.full_name ? { id:data.user_id, full_name:data.full_name, email:session.user?.email || null, organization_id:data.organization_id } : null;const organization = data && data.organization_id ? { id:data.organization_id, name:data.organization_name, code:data.organization_code } : null;const roles = Array.isArray(data.roles) ? data.roles.map(r => ({ id:r.id, name:r.name })) : [];return { profile, organization, roles };}
-async function applyAuthenticatedSession(session){AUTH_STATE.session=session;AUTH_STATE.client = AUTH_STATE.client || getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('Sin configuración pública de Supabase.');return;}try {const ctx = await fetchUserContext(session);AUTH_STATE.profile = ctx.profile;AUTH_STATE.organization = ctx.organization;AUTH_STATE.roles = ctx.roles;} catch (e) {AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];}renderAuthBar();const side=document.querySelector('.side'); if(side) side.style.display='block';document.getElementById('title').textContent='MPCF Platform';document.getElementById('subtitle').textContent='Sistema operativo de trazabilidad y operaciones · Sesión autenticada';view('inicio');}
+async function applyAuthenticatedSession(session){if(!session){return;}const sessionKey=`${session.user?.id||''}:${session.access_token||''}`;if(AUTH_STATE.contextSessionKey===sessionKey&&AUTH_STATE.contextPromise){return AUTH_STATE.contextPromise;}AUTH_STATE.session=session;AUTH_STATE.client=AUTH_STATE.client||getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('Sin configuración pública de Supabase.');return;}AUTH_STATE.contextSessionKey=sessionKey;AUTH_STATE.contextPromise=(async()=>{try {const ctx=await fetchUserContext(session);AUTH_STATE.profile=ctx.profile;AUTH_STATE.organization=ctx.organization;AUTH_STATE.roles=ctx.roles;} catch (e) {AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];}renderAuthBar();const side=document.querySelector('.side');if(side) side.style.display='block';document.getElementById('title').textContent='MPCF Platform';document.getElementById('subtitle').textContent='Sistema operativo de trazabilidad y operaciones · Sesión autenticada';view('inicio');})();return AUTH_STATE.contextPromise;}
 function renderAuthBar(){const authBar=document.getElementById('authBar');if(!authBar)return;if(!AUTH_STATE.session){authBar.style.display='none';authBar.innerHTML='';return;}const userName=AUTH_STATE.profile?.full_name || AUTH_STATE.session.user?.email || 'Usuario';const orgName=AUTH_STATE.organization?.name || 'Sin organización';const roleName=AUTH_STATE.roles?.[0]?.name || 'Sin rol';authBar.innerHTML=`<div class="auth-pill"><span class="auth-user">${esc(userName)}</span><span>·</span><span>${esc(orgName)}</span><span>·</span><span class="auth-role">${esc(roleName)}</span><button class="auth-logout" onclick="logoutFromSupabase()">Cerrar sesión</button></div>`;authBar.style.display='flex';}
 function renderLoginScreen(message=''){const side=document.querySelector('.side'); if(side) side.style.display='none';document.getElementById('content').innerHTML=`<div class="auth-shell"><div class="auth-card"><h2>Ingreso a MPCF Platform</h2><span class="muted">Acceso real mediante Supabase Auth</span><form class="auth-form" onsubmit="event.preventDefault(); loginWithSupabase();"><div><label for="loginEmail">Email</label><input id="loginEmail" type="email" placeholder="usuario@empresa.com" required></div><div><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" placeholder="••••••••" required></div><button class="btn primary" type="submit">Iniciar sesión</button></form>${message?`<div class="auth-warning">${esc(message)}</div>`:''}<div class="auth-inline"><span class="muted">La sesión real se gestiona con Supabase Auth.</span></div></div></div>`;}
-async function bootAuth(){if(!window.supabase || !window.supabase.createClient){renderLoginScreen('Supabase JS no está cargado. Revisa la carga del script CDN.');return;}AUTH_STATE.client=getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('Falta la configuración pública de Supabase. Completa window.MPCF_CONFIG.supabaseUrl y window.MPCF_CONFIG.supabaseAnonKey.');return;}AUTH_STATE.client.auth.onAuthStateChange(async (event, session) => {if(event==='SIGNED_OUT'){AUTH_STATE.session=null;AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];renderAuthBar();renderLoginScreen('La sesión ha expirado o se cerró.');return;}if(event==='SIGNED_IN' && session){await applyAuthenticatedSession(session);return;}if(event==='INITIAL_SESSION' && session){await applyAuthenticatedSession(session);}});const { data, error } = await AUTH_STATE.client.auth.getSession();if(error){renderLoginScreen('No se pudo recuperar la sesión. Revisa la configuración pública de Supabase.');return;}if(data && data.session){await applyAuthenticatedSession(data.session);return;}renderLoginScreen('Inicia sesión para acceder al panel operativo.');}
+async function bootAuth(){if(!window.supabase || !window.supabase.createClient){renderLoginScreen('Supabase JS no está cargado. Revisa la carga del script CDN.');return;}AUTH_STATE.client=getSupabaseClient();if(!AUTH_STATE.client){renderLoginScreen('Falta la configuración pública de Supabase. Completa window.MPCF_CONFIG.supabaseUrl y window.MPCF_CONFIG.supabaseAnonKey.');return;}AUTH_STATE.client.auth.onAuthStateChange(async (event, session) => {if(event==='SIGNED_OUT'){AUTH_STATE.session=null;AUTH_STATE.profile=null;AUTH_STATE.organization=null;AUTH_STATE.roles=[];AUTH_STATE.contextSessionKey=null;AUTH_STATE.contextPromise=null;renderAuthBar();renderLoginScreen('La sesión ha expirado o se cerró.');return;}if((event==='SIGNED_IN'||event==='INITIAL_SESSION')&&session){await applyAuthenticatedSession(session);}});const { data, error } = await AUTH_STATE.client.auth.getSession();if(error){renderLoginScreen('No se pudo recuperar la sesión. Revisa la configuración pública de Supabase.');return;}if(data && data.session){await applyAuthenticatedSession(data.session);return;}renderLoginScreen('Inicia sesión para acceder al panel operativo.');}
 async function loadDashboardData(){const content=document.getElementById('content');if(!content)return;if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}content.innerHTML=`<div class="cards"><div class="card"><div class="muted">Lotes agrícolas</div><div class="num">Cargando...</div></div><div class="card"><div class="muted">Recepciones</div><div class="num">Cargando...</div></div><div class="card"><div class="muted">Producciones</div><div class="num">Cargando...</div></div><div class="card"><div class="muted">Productos / ISOL</div><div class="num">Cargando...</div></div></div><div class="card"><h2>Centro operativo</h2><p class="muted">Consultando indicadores reales desde Supabase...</p></div>`;const tables=['agricultural_lots','biomass_receptions','production_orders','isolate_lots'];const counts={};let errorText='';for(const table of tables){try{const { count, error }=await AUTH_STATE.client.from(table).select('id',{count:'exact',head:true});if(error)throw error;counts[table]=Number(count||0);}catch(e){errorText=e?.message||'Error al consultar Supabase.';break;}}if(errorText){content.innerHTML=`<div class="card"><h2>Centro operativo</h2><p class="muted">No se pudieron cargar los indicadores reales desde Supabase.</p><div class="auth-warning">${esc(errorText)}</div></div>`;return;}content.innerHTML=`<div class="cards"><div class="card"><div class="muted">Lotes agrícolas</div><div class="num">${counts.agricultural_lots ?? 0}</div></div><div class="card"><div class="muted">Recepciones</div><div class="num">${counts.biomass_receptions ?? 0}</div></div><div class="card"><div class="muted">Producciones</div><div class="num">${counts.production_orders ?? 0}</div></div><div class="card"><div class="muted">Productos / ISOL</div><div class="num">${counts.isolate_lots ?? 0}</div></div></div><div class="grid"><div class="card"><h2>Flujo MPCF</h2><div class="detail">🌱 Cultivo → 🔗 REF-EXT → 🚚 Recepción → ▣ Disponibilidad → 🏭 Consumo / Producción → 🧪 Calidad → ◉ Producto / ISOL → 🚛 Despacho</div></div><div class="card"><h2>Estado</h2><p class="muted">Indicadores reales de Supabase cargados con la sesión autenticada.</p></div></div>`;}
 function view(v,btn){
  if(!AUTH_STATE.session){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}
@@ -84,12 +85,382 @@ function nuevoLote(){modal('Crear nuevo lote agrícola',`<div class="form">
 function guardarLote(){let x={id:document.getElementById('f_id').value.trim(),proveedor:document.getElementById('f_prov').value.trim(),variedad:document.getElementById('f_var').value.trim(),siembra:document.getElementById('f_fecha').value,estado:'ABIERTO',ref_ext:document.getElementById('f_ref').value.trim(),plantas_sembradas:document.getElementById('f_plant').value,superficie:document.getElementById('f_sup').value,ubicacion:document.getElementById('f_ubi').value,nota:document.getElementById('f_obs').value};if(!x.id||!x.proveedor){alert('Lote y proveedor son obligatorios');return}DB.cultivo.push(x);save();closeModal();toast('Lote '+x.id+' creado');cultivo()}
 function nuevaCosecha(){let opts=DB.cultivo.map(x=>`<option>${esc(x.id)}</option>`).join('');modal('Registrar cosecha',`<div class="form"><div><label>Lote</label><select id="c_lote">${opts}</select></div><div><label>Cuadrante</label><input id="c_quad" placeholder="L2"></div><div><label>Fecha</label><input id="c_fecha" type="date"></div><div><label>Variedad</label><input id="c_var" placeholder="MERLOT"></div><div><label>kg cosechados</label><input id="c_kg" type="number" step="0.001"></div><div><label>kg recibidos</label><input id="c_rec" type="number" step="0.001"></div><div><label>REF-EXT</label><input id="c_ref"></div><div><label>Estado</label><select id="c_est"><option>COSECHADA</option><option>RECIBIDA</option><option>PARCIAL</option></select></div></div><div class="toolbar"><button class="btn primary" onclick="guardarCosecha()">Guardar cosecha</button></div>`)}
 function guardarCosecha(){let l=document.getElementById('c_lote').value;let x={id:id('COS'),lote:l,cuadrante:document.getElementById('c_quad').value,proveedor:DB.cultivo.find(z=>z.id===l)?.proveedor||'',variedad:document.getElementById('c_var').value,fecha:document.getElementById('c_fecha').value,kg_cosechados:+document.getElementById('c_kg').value,kg_recibidos:+document.getElementById('c_rec').value,estado:document.getElementById('c_est').value,ref_ext:document.getElementById('c_ref').value};DB.cosechas.push(x);save();closeModal();toast('Cosecha guardada');cultivo()}
-function materia(){let rows=DB.recepciones.map(x=>`<tr><td>${x.id}</td><td>${x.fecha}</td><td>${esc(x.proveedor)}</td><td>${esc(x.variedad)}</td><td>${x.kg}</td><td><b>${esc(x.ref_ext)}</b></td><td>${x.cod_destino||'—'}</td></tr>`).join('');document.getElementById('content').innerHTML=`<div class="toolbar"><button class="btn primary" onclick="nuevaRecepcion()">＋ Nueva recepción</button></div><div class="card"><h2>Recepciones</h2><table><tr><th>ID</th><th>Fecha</th><th>Proveedor</th><th>Variedad</th><th>kg</th><th>REF-EXT</th><th>COD destino</th></tr>${rows}</table></div>`}
-function nuevaRecepcion(){modal('Nueva recepción de materia prima',`<div class="form"><div><label>Fecha</label><input id="r_fecha" type="date"></div><div><label>Proveedor / propietario</label><input id="r_prov"></div><div><label>Variedad</label><input id="r_var"></div><div><label>Estado biomasa</label><select id="r_est"><option>FRESCA</option><option>SECA</option></select></div><div><label>Cantidad kg</label><input id="r_kg" type="number" step=".001"></div><div><label>COD destino (si aplica)</label><input id="r_cod" placeholder="128"></div><div class="span2"><label>REF-EXT · puente planta ↔ cultivo</label><input id="r_ref" placeholder="P20-L2-001"></div></div><div class="toolbar"><button class="btn primary" onclick="guardarRecepcion()">Guardar recepción</button></div>`)}
-function guardarRecepcion(){let x={id:id('REC'),fecha:document.getElementById('r_fecha').value,proveedor:document.getElementById('r_prov').value,variedad:document.getElementById('r_var').value,estado:document.getElementById('r_est').value,kg:+document.getElementById('r_kg').value,cod_destino:document.getElementById('r_cod').value,ref_ext:document.getElementById('r_ref').value};DB.recepciones.push(x);DB.disponibilidad.push({id:id('STK'),material:'Biomasa',ref_ext:x.ref_ext,kg_disponibles:x.kg,ubicacion:'Bodega MP',estado:'DISPONIBLE'});save();closeModal();toast('Recepción guardada y enviada a Bodega de Disponibilidad');materia()}
-function bodega(){let rows=DB.disponibilidad.map(x=>`<tr><td>${x.id}</td><td>${esc(x.material)}</td><td><b>${esc(x.ref_ext)}</b></td><td>${x.kg_disponibles}</td><td>${esc(x.ubicacion)}</td><td class="ok">${x.estado}</td><td><button class="btn" onclick="consumir('${x.id}')">Consumir</button></td></tr>`).join('');document.getElementById('content').innerHTML=`<div class="card"><h2>Inventario disponible</h2><p class="muted">La disponibilidad es un hecho distinto de la recepción y del consumo.</p><table><tr><th>ID</th><th>Material</th><th>REF-EXT</th><th>kg disponibles</th><th>Ubicación</th><th>Estado</th><th></th></tr>${rows}</table></div>`}
-function consumir(stockid){let s=DB.disponibilidad.find(x=>x.id===stockid);modal('Consumir desde Bodega de Disponibilidad',`<div class="detail">Disponible: <b>${s.kg_disponibles} kg</b> · REF-EXT: <b>${esc(s.ref_ext)}</b></div><div class="form"><div><label>Producción / COD</label><select id="co_prod">${DB.producciones.map(x=>`<option value="${x.id}">${x.cod} · ${x.fecha} · ${x.turno}</option>`).join('')}</select></div><div><label>Cantidad kg</label><input id="co_kg" type="number" max="${s.kg_disponibles}" step=".001"></div></div><div class="toolbar"><button class="btn primary" onclick="guardarConsumo('${stockid}')">Registrar consumo</button></div>`)}
-function guardarConsumo(sid){let s=DB.disponibilidad.find(x=>x.id===sid),p=document.getElementById('co_prod').value,k=+document.getElementById('co_kg').value;if(!k||k>s.kg_disponibles){alert('Cantidad inválida');return}s.kg_disponibles-=k;DB.consumos.push({id:id('CON'),produccion:p,stock:sid,ref_ext:s.ref_ext,kg:k,tipo:'CONSUMO',fecha:new Date().toISOString().slice(0,10)});save();closeModal();toast(k+' kg consumidos para producción');bodega()}
+const RECEPTION_STATE={providers:[],bigBags:[]};
+
+async function loadExternalOrganizations(){
+	if(!AUTH_STATE.client){return [];} 
+	const { data, error } = await AUTH_STATE.client
+		.from('organizations')
+		.select('id,name,organization_type,is_active')
+		.eq('organization_type','EXTERNO')
+		.eq('is_active',true)
+		.order('name',{ascending:true});
+	if(error){console.error('organizations load error',error);return [];} 
+	return Array.isArray(data)?data:[];
+}
+
+function addReceptionBigBag(){
+	RECEPTION_STATE.bigBags.push({
+		big_bag_code:'',
+		external_reference:'',
+		declared_weight_kg:'',
+		verified_weight_kg:'',
+		biomass_type:'FRESCA',
+		evidence_reference:'',
+		status:'RECIBIDO'
+	});
+	renderReceptionBigBags();
+}
+
+function removeReceptionBigBag(index){
+	RECEPTION_STATE.bigBags.splice(index,1);
+	renderReceptionBigBags();
+}
+
+function renderReceptionBigBags(){
+	const list=document.getElementById('receptionBigBagList');
+	if(!list){return;}
+	if(!RECEPTION_STATE.bigBags.length){
+		list.innerHTML='<div class="auth-warning">No hay Big Bags cargados. Agrega al menos uno para registrar la recepción.</div>';
+		refreshReceptionMassBalance();
+		return;
+	}
+	list.innerHTML=RECEPTION_STATE.bigBags.map((bag,index)=>`
+		<div class="card reception-big-bag-row" style="margin-top:12px;">
+			<div class="toolbar" style="margin:0 0 10px 0;justify-content:space-between;align-items:center;">
+				<strong>Big Bag ${index+1}</strong>
+				<button class="btn" type="button" onclick="removeReceptionBigBag(${index})">Eliminar</button>
+			</div>
+			<div class="form">
+				<div><label>Código Big Bag</label><input data-bag-index="${index}" data-field="big_bag_code" value="${esc(bag.big_bag_code)}" oninput="refreshReceptionMassBalance()"></div>
+				<div><label>REF-EXT Big Bag</label><input data-bag-index="${index}" data-field="external_reference" value="${esc(bag.external_reference)}" oninput="refreshReceptionMassBalance()"></div>
+				<div><label>Peso declarado</label><input data-bag-index="${index}" data-field="declared_weight_kg" type="number" step="0.001" value="${esc(bag.declared_weight_kg)}" oninput="refreshReceptionMassBalance()"></div>
+				<div><label>Peso verificado</label><input data-bag-index="${index}" data-field="verified_weight_kg" type="number" step="0.001" value="${esc(bag.verified_weight_kg)}" oninput="refreshReceptionMassBalance()"></div>
+				<div><label>Tipo biomasa</label><select data-bag-index="${index}" data-field="biomass_type" oninput="refreshReceptionMassBalance()"><option value="FRESCA" ${bag.biomass_type==='FRESCA'?'selected':''}>FRESCA</option><option value="SECA" ${bag.biomass_type==='SECA'?'selected':''}>SECA</option></select></div>
+				<div><label>Evidencia</label><input data-bag-index="${index}" data-field="evidence_reference" value="${esc(bag.evidence_reference)}" oninput="refreshReceptionMassBalance()"></div>
+				<div><label>Estado</label><select data-bag-index="${index}" data-field="status" oninput="refreshReceptionMassBalance()"><option value="RECIBIDO" ${bag.status==='RECIBIDO'?'selected':''}>RECIBIDO</option><option value="PENDIENTE" ${bag.status==='PENDIENTE'?'selected':''}>PENDIENTE</option></select></div>
+			</div>
+		</div>
+	`).join('');
+	refreshReceptionMassBalance();
+}
+
+function getReceptionMassSummary(){
+	const receiptInput=document.getElementById('r_verified_weight_kg');
+	const receiptValue=parseFloat(receiptInput&&receiptInput.value ? receiptInput.value : '0');
+	let sumBigBags=0;
+	document.querySelectorAll('.reception-big-bag-row').forEach((row)=>{
+		const value=parseFloat(row.querySelector('[data-field="verified_weight_kg"]')?.value || '0');
+		if(Number.isFinite(value)) sumBigBags += value;
+	});
+	const difference = Number.isFinite(receiptValue) ? receiptValue - sumBigBags : 0;
+	return {
+		receiptValue:Number.isFinite(receiptValue)?receiptValue:0,
+		sumBigBags,
+		difference,
+		isBalanced: Math.abs(difference) <= 0.001
+	};
+}
+
+function refreshReceptionMassBalance(){
+	const summary=document.getElementById('receptionMassSummary');
+	if(!summary){return;}
+	const data=getReceptionMassSummary();
+	const status = data.isBalanced ? 'OK' : 'INCONSISTENTE';
+	summary.innerHTML = `
+		<div class="detail">
+			<strong>Peso recepción:</strong> ${data.receiptValue.toFixed(3)} kg<br>
+			<strong>Peso Big Bags:</strong> ${data.sumBigBags.toFixed(3)} kg<br>
+			<strong>Diferencia:</strong> ${data.difference.toFixed(3)} kg<br>
+			<strong>Estado del balance:</strong> <span class="${data.isBalanced ? 'ok' : 'warn'}">${status}</span>
+		</div>
+	`;
+	const saveBtn=document.getElementById('saveReceptionBtn');
+	if(saveBtn){
+		const hasRequiredData = !!document.getElementById('r_reception_code')?.value.trim() && !!document.getElementById('r_supplier_id')?.value && document.querySelectorAll('.reception-big-bag-row').length > 0;
+		saveBtn.disabled = !(data.isBalanced && hasRequiredData && Number.isFinite(data.receiptValue) && data.receiptValue > 0);
+	}
+}
+
+function buildReceptionPayload(){
+	const code=(document.getElementById('r_reception_code')?.value || '').trim();
+	const receptionDatetime=(document.getElementById('r_reception_datetime')?.value || '').trim();
+	const supplierId=(document.getElementById('r_supplier_id')?.value || '').trim();
+	const biomassType=(document.getElementById('r_biomass_type')?.value || 'FRESCA').trim();
+	const status=(document.getElementById('r_status')?.value || 'RECIBIDA').trim();
+	const declaredWeight = parseFloat(document.getElementById('r_declared_weight_kg')?.value || '0');
+	const verifiedWeight = parseFloat(document.getElementById('r_verified_weight_kg')?.value || '0');
+	const externalReference=(document.getElementById('r_external_reference')?.value || '').trim();
+	const observations=(document.getElementById('r_observations')?.value || '').trim();
+	const agriculturalLotId=(document.getElementById('r_agricultural_lot_id')?.value || '').trim();
+	const agriculturalLotQuantity = parseFloat(document.getElementById('r_agricultural_lot_quantity_kg')?.value || '0');
+	if(!code){throw new Error('El código de recepción es obligatorio.');}
+	if(!receptionDatetime){throw new Error('La fecha y hora de recepción son obligatorias.');}
+	if(!supplierId){throw new Error('Debe seleccionar un proveedor externo válido.');}
+	if(!Number.isFinite(verifiedWeight) || verifiedWeight <= 0){throw new Error('El peso verificado de la recepción debe ser mayor que cero.');}
+	const bagRows = Array.from(document.querySelectorAll('.reception-big-bag-row'));
+	if(!bagRows.length){throw new Error('Debe agregar al menos un Big Bag.');}
+	const bigBags = bagRows.map((row,index)=>{
+		const getField=(field)=>row.querySelector(`[data-field="${field}"]`)?.value ?? '';
+		const item = {
+			big_bag_code: (getField('big_bag_code') || '').trim(),
+			external_reference: (getField('external_reference') || '').trim() || null,
+			declared_weight_kg: getField('declared_weight_kg') === '' ? null : Number(parseFloat(getField('declared_weight_kg'))),
+			verified_weight_kg: Number(parseFloat(getField('verified_weight_kg'))),
+			biomass_type: (getField('biomass_type') || biomassType || 'FRESCA').trim(),
+			evidence_reference: (getField('evidence_reference') || '').trim() || null,
+			status: (getField('status') || 'RECIBIDO').trim()
+		};
+		if(!item.big_bag_code){throw new Error('Cada Big Bag requiere un código.');}
+		if(!Number.isFinite(item.verified_weight_kg) || item.verified_weight_kg <= 0){throw new Error(`El Big Bag ${index + 1} requiere un peso verificado válido.`);}
+		return item;
+	});
+	const bigBagsTotal = bigBags.reduce((sum,b)=>sum + (Number.isFinite(b.verified_weight_kg) ? Number(b.verified_weight_kg) : 0),0);
+	if(Math.abs(bigBagsTotal - verifiedWeight) > 0.001){
+		throw new Error(`Balance de masa inconsistente: recepción ${verifiedWeight.toFixed(3)} kg vs Big Bags ${bigBagsTotal.toFixed(3)} kg.`);
+	}
+	const payload = {
+		reception_code: code,
+		reception_datetime: new Date(receptionDatetime).toISOString(),
+		supplier_organization_id: supplierId,
+		declared_weight_kg: Number.isFinite(declaredWeight) ? declaredWeight : null,
+		verified_weight_kg: verifiedWeight,
+		status: status,
+		biomass_type: biomassType,
+		external_reference: externalReference || null,
+		agricultural_lot_id: agriculturalLotId || null,
+		agricultural_lot_quantity_kg: agriculturalLotId && Number.isFinite(agriculturalLotQuantity) && agriculturalLotQuantity > 0 ? agriculturalLotQuantity : null,
+		observations: observations || null,
+		big_bags: bigBags
+	};
+	return payload;
+}
+
+async function materia(){
+	if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}
+	const { data, error } = await AUTH_STATE.client
+		.from('biomass_receptions')
+		.select('*')
+		.order('reception_datetime',{ascending:false});
+	if(error){
+		document.getElementById('content').innerHTML=`<div class="card"><h2>Recepciones</h2><p class="muted">No se pudieron cargar las recepciones reales desde Supabase.</p><div class="auth-warning">${esc(error.message || 'Error desconocido')}</div></div>`;
+		return;
+	}
+	const rows = (data || []).map((x)=>`<tr><td>${esc(x.reception_code || x.id || '—')}</td><td>${esc(x.reception_datetime ? new Date(x.reception_datetime).toLocaleString() : '—')}</td><td>${esc(x.supplier_name_declared || '—')}</td><td>${esc(x.status || '—')}</td><td>${Number(x.verified_weight_kg || 0).toFixed(3)}</td><td>${esc(x.external_reference || '—')}</td></tr>`).join('');
+	document.getElementById('content').innerHTML=`<div class="toolbar"><button class="btn primary" onclick="nuevaRecepcion()">＋ Nueva recepción</button></div><div class="card"><h2>Recepciones</h2><table><tr><th>Código</th><th>Fecha/Hora</th><th>Proveedor</th><th>Estado</th><th>Peso verificado</th><th>REF-EXT</th></tr>${rows || '<tr><td colspan="6">No hay recepciones registradas.</td></tr>'}</table></div>`;
+}
+
+async function nuevaRecepcion(){
+	if(!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}
+	const providers=await loadExternalOrganizations();
+	const lotData = await AUTH_STATE.client.from('agricultural_lots').select('id').order('id',{ascending:true}).limit(50);
+	const lots = !lotData.error && Array.isArray(lotData.data) ? lotData.data : [];
+	const providerOptions = providers.length ? providers.map((p)=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('') : '<option value="">No hay proveedores EXTERNO disponibles</option>';
+	const lotOptions = ['<option value="">Sin lote agrícola</option>'].concat(lots.map((lot)=>`<option value="${esc(lot.id)}">${esc(lot.id)}</option>`)).join('');
+	modal('Nueva recepción de materia prima',`<div class="form">
+		<div><label>Código de recepción</label><input id="r_reception_code" placeholder="REC-20260913-001" oninput="refreshReceptionMassBalance()"></div>
+		<div><label>Fecha / hora</label><input id="r_reception_datetime" type="datetime-local" value="${new Date().toISOString().slice(0,16)}"></div>
+		<div><label>Proveedor</label><select id="r_supplier_id" onchange="refreshReceptionMassBalance()">${providerOptions}</select></div>
+		<div><label>Estado biomasa</label><select id="r_biomass_type"><option value="FRESCA">FRESCA</option><option value="SECA">SECA</option></select></div>
+		<div><label>Estado recepción</label><select id="r_status"><option value="RECIBIDA">RECIBIDA</option><option value="PENDIENTE">PENDIENTE</option></select></div>
+		<div><label>Peso declarado</label><input id="r_declared_weight_kg" type="number" step="0.001"></div>
+		<div><label>Peso verificado</label><input id="r_verified_weight_kg" type="number" step="0.001" oninput="refreshReceptionMassBalance()"></div>
+		<div><label>REF-EXT de recepción</label><input id="r_external_reference" placeholder="REF-EXT de recepción"></div>
+		<div><label>Lote agrícola</label><select id="r_agricultural_lot_id">${lotOptions}</select></div>
+		<div><label>Kg asociados al lote</label><input id="r_agricultural_lot_quantity_kg" type="number" step="0.001"></div>
+		<div class="span2"><label>Observaciones</label><textarea id="r_observations"></textarea></div>
+	</div>
+	<div class="detail" style="margin-top:13px;">
+		<div class="toolbar" style="margin:0 0 10px 0;"><button class="btn primary" type="button" onclick="addReceptionBigBag()">＋ Agregar Big Bag</button></div>
+		<div id="receptionBigBagList"></div>
+		<div id="receptionMassSummary"></div>
+	</div>
+	<div class="toolbar"><button class="btn primary" id="saveReceptionBtn" type="button" onclick="guardarRecepcion()" disabled>Guardar recepción</button></div>`);
+	RECEPTION_STATE.bigBags=[];
+	addReceptionBigBag();
+	refreshReceptionMassBalance();
+}
+
+async function guardarRecepcion(){
+	if(!AUTH_STATE.client || !AUTH_STATE.session){
+		alert('Debes iniciar sesión para registrar una recepción.');
+		return;
+	}
+	try {
+		const payload = buildReceptionPayload();
+		const { data, error } = await AUTH_STATE.client.rpc('register_biomass_reception', { p_payload: payload });
+		if(error){
+			console.error('register_biomass_reception error', error);
+			const message = error?.message || 'Error desconocido al registrar la recepción.';
+			alert('No se pudo registrar la recepción:\n' + message);
+			return;
+		}
+		const receptionCode = payload.reception_code || data?.reception_code || '—';
+		const registeredWeight = Number(data?.verified_weight_kg ?? payload.verified_weight_kg ?? 0);
+		const bigBagCount = Number(data?.big_bags_count ?? payload.big_bags.length ?? 0);
+		closeModal();
+		toast('Recepción registrada correctamente');
+		alert(`Recepción registrada correctamente\nCódigo: ${receptionCode}\nPeso: ${registeredWeight.toFixed(3)} kg\nBig Bags: ${bigBagCount}`);
+		await materia();
+	} catch (error) {
+		console.error('Submission validation error', error);
+		alert(error && error.message ? error.message : 'Error de validación al guardar la recepción.');
+	}
+}
+const BODEGA_STATE={inventory:[],fifoReady:false};
+function formatKg(value){return Number.isFinite(Number(value))?Number(value).toFixed(3):'—';}
+function buildBodegaInventory(availabilityRows,receptionRows,bigBagRows,movementRows,externalReferenceRows){
+ const receptions=new Map((receptionRows||[]).map(x=>[x.id,x]));
+ const references=new Map((externalReferenceRows||[]).map(x=>[x.id,x.raw_value]));
+ const movements=movementRows||[];
+ const bagsByReception=new Map();
+ (bigBagRows||[]).forEach(bag=>{if(!bagsByReception.has(bag.reception_id))bagsByReception.set(bag.reception_id,[]);bagsByReception.get(bag.reception_id).push(bag);});
+ const inventory=[];
+ (availabilityRows||[]).forEach(availability=>{
+  const reception=receptions.get(availability.reception_id)||{};
+  const bags=bagsByReception.get(availability.reception_id)||[];
+  if(!bags.length){
+	const availabilityConsumed=movements.filter(m=>m.availability_id===availability.id&&m.movement_type==='CONSUMO').reduce((sum,m)=>sum+Number(m.quantity_kg||0),0);
+	inventory.push({availability,bigBag:null,reception,externalReference:references.get(reception.external_reference_id)||'—',consumedKg:availabilityConsumed,availableKg:null,physicalOrderKnown:false});
+   return;
+  }
+  bags.forEach(bigBag=>{
+   const bagMovements=movements.filter(m=>m.availability_id===availability.id&&m.big_bag_id===bigBag.id&&m.movement_type==='CONSUMO');
+   const consumedKg=bagMovements.reduce((sum,m)=>sum+Number(m.quantity_kg||0),0);
+   const verified=bigBag.verified_weight_kg===null?null:Number(bigBag.verified_weight_kg);
+	inventory.push({availability,bigBag,reception,externalReference:bigBag.external_reference||references.get(reception.external_reference_id)||'—',consumedKg,availableKg:verified===null?null:verified-consumedKg,physicalOrderKnown:false});
+  });
+ });
+ const byReceptionTime=new Map();
+ inventory.forEach(entry=>{const key=entry.reception.reception_datetime||entry.availability.availability_datetime||entry.availability.reception_id;if(!byReceptionTime.has(key))byReceptionTime.set(key,[]);byReceptionTime.get(key).push(entry);});
+ const ordered=[];
+ [...byReceptionTime.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).forEach(([,entries])=>{
+  const known=entries.length===1;
+  entries.forEach(entry=>{entry.physicalOrderKnown=known;ordered.push(entry);});
+ });
+ let fifoReady=true;
+ let position=0;
+ ordered.forEach(entry=>{
+  if(!fifoReady||!entry.physicalOrderKnown){entry.fifoPosition=null;if(entry.bigBag&&entry.availableKg>0)fifoReady=false;return;}
+  if(entry.availableKg!==null&&entry.availableKg>0){position+=1;entry.fifoPosition=position;}
+ });
+ BODEGA_STATE.inventory=ordered;
+ BODEGA_STATE.fifoReady=fifoReady&&position>0;
+ return ordered;
+}
+function renderBodegaHistory(movementRows,receptionRows,bigBagRows,productionRows){
+ const receptions=new Map((receptionRows||[]).map(row=>[row.id,row]));
+ const bigBags=new Map((bigBagRows||[]).map(row=>[row.id,row]));
+ const productions=new Map((productionRows||[]).map(row=>[row.id,row]));
+ const rows=(movementRows||[]).slice().sort((a,b)=>String(b.movement_datetime||'').localeCompare(String(a.movement_datetime||''))).map(movement=>{
+  const reception=receptions.get(movement.reception_id)||{};
+  const bigBag=bigBags.get(movement.big_bag_id)||{};
+  const production=movement.reference_type==='PRODUCTION_ORDER'?productions.get(movement.reference_id):null;
+  const productionLabel=production?`COD ${esc(production.cod||'—')} · ${esc(production.id)}`:'—';
+  return `<tr><td>${esc(movement.movement_datetime?new Date(movement.movement_datetime).toLocaleString():'—')}</td><td>${esc(movement.movement_type||'—')}</td><td>${esc(reception.reception_code||movement.reception_id||'—')}</td><td>${esc(bigBag.big_bag_code||movement.big_bag_id||'—')}</td><td>${esc(reception.supplier_name_declared||'—')}</td><td>${esc(bigBag.biomass_type||'—')}</td><td>${formatKg(movement.quantity_kg)}</td><td>${productionLabel}</td></tr>`;
+ }).join('');
+ return `<div class="card"><h2>HISTORIAL DE MOVIMIENTOS</h2><p class="muted">Historial real de movimientos; incluye Big Bags agotados que ya no aparecen en el inventario operativo.</p><table><tr><th>Fecha/hora</th><th>Tipo</th><th>Recepción</th><th>Big Bag</th><th>Proveedor</th><th>Biomasa</th><th>Cantidad kg</th><th>COD / producción</th></tr>${rows||'<tr><td colspan="8">No hay movimientos registrados.</td></tr>'}</table></div>`;
+}
+function renderBodegaInventory(inventory,movementRows,receptionRows,bigBagRows,productionRows){
+ const visibleInventory=inventory.filter(entry=>entry.availableKg!==null&&entry.availableKg>0);
+ const rows=visibleInventory.map(entry=>{
+  const availability=entry.availability,bigBag=entry.bigBag,reception=entry.reception;
+  const available=entry.availableKg===null?Number(availability.quantity_available_kg):entry.availableKg;
+  const state='DISPONIBLE';
+  const fifo=entry.fifoPosition?`FIFO #${entry.fifoPosition}`:'ORDEN FÍSICO PENDIENTE';
+  const recommended=entry.fifoPosition===1&&available>0?'<span class="tag ok">RECOMENDADO</span>':'';
+  return `<tr><td>${esc(reception.reception_code||availability.reception_id)}</td><td>${esc(reception.reception_datetime||availability.availability_datetime||'—')}</td><td>${esc(reception.supplier_name_declared||'—')}</td><td>${esc(entry.externalReference)}</td><td>${esc(bigBag?.biomass_type||availability.material_type)}</td><td>${esc(bigBag?.big_bag_code||'Sin Big Bag registrado')}</td><td>${formatKg(bigBag?.declared_weight_kg)}</td><td>${formatKg(bigBag?.verified_weight_kg)}</td><td>${formatKg(entry.consumedKg)}</td><td>${formatKg(available)}</td><td>${esc(state)}</td><td>${esc(fifo)} ${recommended}</td><td><button class="btn" onclick="consumir('${esc(availability.id)}')">Consumir</button></td></tr>`;
+ }).join('');
+ document.getElementById('content').innerHTML=`<div class="card"><h2>Inventario por Big Bag</h2><p class="muted">Se muestran únicamente Big Bags con saldo físico mayor que cero. El orden FIFO queda como recomendación cuando el backend aporta el orden físico; el operador decide la distribución.</p><table><tr><th>Recepción</th><th>Fecha/Hora física</th><th>Proveedor</th><th>REF-EXT</th><th>Biomasa</th><th>Big Bag</th><th>Declarado kg</th><th>Verificado kg</th><th>Consumido kg</th><th>Saldo kg</th><th>Estado</th><th>FIFO</th><th></th></tr>${rows||'<tr><td colspan="13">No hay Big Bags con saldo disponible.</td></tr>'}</table></div>${renderBodegaHistory(movementRows,receptionRows,bigBagRows,productionRows)}`;
+}
+async function bodega(){
+ if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}
+ const [availabilityResult,receptionResult,bigBagResult,movementResult,referenceResult,productionResult]=await Promise.all([
+  AUTH_STATE.client.from('material_availability').select('id,organization_id,reception_id,material_type,quantity_received_kg,quantity_available_kg,status,availability_datetime,observations,created_at,updated_at').order('availability_datetime',{ascending:true}),
+  AUTH_STATE.client.from('biomass_receptions').select('id,reception_code,reception_datetime,supplier_name_declared,external_reference_id'),
+  AUTH_STATE.client.from('big_bags').select('id,reception_id,big_bag_code,external_reference,declared_weight_kg,verified_weight_kg,biomass_type,evidence_reference,status'),
+  AUTH_STATE.client.from('material_movements').select('id,organization_id,availability_id,reception_id,big_bag_id,movement_type,quantity_kg,movement_datetime,reference_type,reference_id,observations'),
+	AUTH_STATE.client.from('external_references').select('id,raw_value'),
+	AUTH_STATE.client.from('production_orders').select('id,production_date,shift,cod,production_identity,production_type,status')
+ ]);
+ const failed=[availabilityResult,receptionResult,bigBagResult,movementResult,productionResult].find(result=>result.error);
+ if(failed){document.getElementById('content').innerHTML=`<div class="card"><h2>Inventario por Big Bag</h2><div class="auth-warning">${esc(failed.error.message||'No se pudo cargar la trazabilidad física de Bodega.')}</div></div>`;return;}
+ if(referenceResult.error){console.warn('external_references unavailable',referenceResult.error);}
+ renderBodegaInventory(buildBodegaInventory(availabilityResult.data,receptionResult.data,bigBagResult.data,movementResult.data,referenceResult.error?[]:referenceResult.data),movementResult.data,receptionResult.data,bigBagResult.data,productionResult.data);
+}
+function getConsumptionEntries(availabilityId){
+ return BODEGA_STATE.inventory.filter(entry=>entry.availability.id===availabilityId&&entry.bigBag&&entry.availableKg!==null&&entry.availableKg>0);
+}
+function renderConsumptionProposal(availabilityId){
+ const target=document.getElementById('co_fifo_proposal');
+ if(!target)return;
+ const requested=Number(document.getElementById('co_kg')?.value||0);
+ const entries=getConsumptionEntries(availabilityId);
+ if(!Number.isFinite(requested)||requested<=0){target.innerHTML='<span class="muted">Ingresa una cantidad y asigna kg a uno o varios Big Bags.</span>';return;}
+ if(!entries.length){target.innerHTML='<span class="warn">No hay saldo físico de Big Bags disponible para proponer.</span>';return;}
+ const allocations=entries.map(entry=>({entry,quantity:Number(document.getElementById('co_alloc_'+entry.bigBag.id)?.value||0)})).filter(item=>item.quantity>0);
+ const assigned=allocations.reduce((sum,item)=>sum+item.quantity,0);
+ const invalid=allocations.find(item=>item.quantity>item.entry.availableKg+0.001);
+ const difference=requested-assigned;
+ const details=allocations.map(item=>`<div>${esc(item.entry.bigBag.big_bag_code)} → ${formatKg(item.quantity)} kg / saldo ${formatKg(item.entry.availableKg)} kg</div>`).join('');
+ const status=invalid?`<div class="warn">Cantidad inválida. El Big Bag dispone únicamente de ${formatKg(invalid.entry.availableKg)} kg.</div>`:Math.abs(difference)<=0.001?'<div class="ok"><strong>Distribución exacta lista para registrar.</strong></div>':`<div class="warn">${difference>0?'Faltan':'Sobran'} ${formatKg(Math.abs(difference))} kg para igualar el consumo solicitado.</div>`;
+ target.innerHTML=`<strong>Previsualización de distribución</strong>${details||'<div class="muted">Aún no hay kg asignados.</div>'}<div>Total asignado: <b>${formatKg(assigned)} kg</b> de ${formatKg(requested)} kg</div>${status}`;
+}
+function applyRecommendedDistribution(availabilityId){
+ const requested=Number(document.getElementById('co_kg')?.value||0);
+ let remaining=Number.isFinite(requested)&&requested>0?requested:0;
+ getConsumptionEntries(availabilityId).forEach(entry=>{
+  const input=document.getElementById('co_alloc_'+entry.bigBag.id);
+  const quantity=Math.min(remaining,entry.availableKg);
+  if(input)input.value=quantity>0?quantity.toFixed(3):'';
+  remaining-=quantity;
+ });
+ renderConsumptionProposal(availabilityId);
+}
+async function consumir(availabilityId){
+ if(!AUTH_STATE.client||!AUTH_STATE.session){alert('Debes iniciar sesión para consumir material.');return;}
+ const availability=BODEGA_STATE.inventory.find(entry=>entry.availability.id===availabilityId)?.availability;
+ if(!availability){alert('No se encontró la disponibilidad.');return;}
+ const [productionResult]=await Promise.all([
+  AUTH_STATE.client.from('production_orders').select('id,production_date,shift,cod,production_identity,production_type,status').order('production_date',{ascending:false}).order('cod',{ascending:true})
+ ]);
+ if(productionResult.error){alert(productionResult.error.message||'No se pudieron cargar las producciones.');return;}
+ const entries=getConsumptionEntries(availabilityId);
+ const productionOptions=(productionResult.data||[]).map(x=>`<option value="${esc(x.id)}">COD ${esc(x.cod)} · ${esc(x.production_date)} · ${esc(x.shift)} · ${esc(x.status)}</option>`).join('');
+ const allocationRows=entries.map(entry=>`<div class="detail"><label for="co_alloc_${esc(entry.bigBag.id)}">${esc(entry.bigBag.big_bag_code)} · saldo individual: ${formatKg(entry.availableKg)} kg${entry.fifoPosition?' · FIFO #'+entry.fifoPosition+' recomendado':''}</label><input id="co_alloc_${esc(entry.bigBag.id)}" type="number" min="0" max="${esc(entry.availableKg)}" step=".001" placeholder="0.000" oninput="renderConsumptionProposal('${esc(availabilityId)}')"></div>`).join('');
+ modal('Consumir desde Bodega de Disponibilidad',`<div class="detail">Material: <b>${esc(availability.material_type)}</b><br>Disponible agregado de la recepción: <b>${formatKg(Number(availability.quantity_available_kg))} kg</b><br>Recepción: <b>${esc(availability.reception_id)}</b></div><div class="form"><div><label>Producción / COD</label><select id="co_prod">${productionOptions||'<option value="">No hay producciones disponibles</option>'}</select></div><div><label>Cantidad total a consumir</label><input id="co_kg" type="number" max="${esc(availability.quantity_available_kg)}" min="0.001" step=".001" oninput="renderConsumptionProposal('${esc(availability.id)}')"></div><div class="span2"><label>Distribución física por Big Bag</label>${allocationRows||'<span class="warn">No hay Big Bags con saldo físico.</span>'}<div class="toolbar"><button class="btn" type="button" onclick="applyRecommendedDistribution('${esc(availabilityId)}')">Proponer distribución FIFO</button></div></div><div><label>Evidencia</label><input id="co_evidence" placeholder="Evidencia de consumo"></div><div><label>Observaciones</label><textarea id="co_observations"></textarea></div></div><div id="co_fifo_proposal" class="detail"><span class="muted">Ingresa una cantidad y asigna kg a uno o varios Big Bags.</span></div><div class="toolbar"><button class="btn primary" onclick="guardarConsumo('${esc(availability.id)}')">Registrar consumo</button></div>`);
+}
+async function guardarConsumo(availabilityId){
+ if(CONSUME_STATE.pending){return;}
+ if(!AUTH_STATE.client||!AUTH_STATE.session){alert('Debes iniciar sesión para consumir material.');return;}
+ const submitButton=document.querySelector('#modalbox button[onclick^="guardarConsumo"]');
+ CONSUME_STATE.pending=true;
+ if(submitButton){submitButton.disabled=true;submitButton.textContent='Registrando consumo...';}
+ const productionOrderId=document.getElementById('co_prod')?.value||'';
+ const quantity=Number(document.getElementById('co_kg')?.value||0);
+ const evidenceReference=(document.getElementById('co_evidence')?.value||'').trim()||null;
+ const observations=(document.getElementById('co_observations')?.value||'').trim()||null;
+ try {
+  if(!productionOrderId){alert('Debes seleccionar una producción.');return;}
+  if(!Number.isFinite(quantity)||quantity<=0){alert('La cantidad debe ser mayor que cero.');return;}
+	const entries=getConsumptionEntries(availabilityId);
+	const consumptions=entries.map(entry=>({availability_id:availabilityId,big_bag_id:entry.bigBag.id,quantity_kg:Number(document.getElementById('co_alloc_'+entry.bigBag.id)?.value||0)})).filter(line=>line.quantity_kg>0);
+	const assigned=consumptions.reduce((sum,line)=>sum+line.quantity_kg,0);
+	 const invalid=consumptions.find(line=>line.quantity_kg>entries.find(entry=>entry.bigBag.id===line.big_bag_id).availableKg+0.001);
+	if(!consumptions.length||Math.abs(assigned-quantity)>0.001){alert('La distribución por Big Bag debe ser exactamente igual a la cantidad total a consumir.');return;}
+	 if(invalid){const invalidEntry=entries.find(entry=>entry.bigBag.id===invalid.big_bag_id);alert(`Cantidad inválida. El Big Bag dispone únicamente de ${formatKg(invalidEntry.availableKg)} kg.`);return;}
+	const {data,error}=await AUTH_STATE.client.rpc('consume_material_transaction',{p_payload:{production_order_id:productionOrderId,quantity_kg:quantity,consumptions,evidence_reference:evidenceReference,observations}});
+  if(error){console.error('consume_material_transaction error',error);alert(error.message||'No se pudo registrar el consumo.');return;}
+	const resultingBalance=Number(data?.consumptions?.find(item=>item.availability_id===availabilityId)?.availability_quantity_available_kg);
+  closeModal();
+  toast('Consumo registrado correctamente');
+  alert(`Consumo registrado correctamente: ${quantity} kg. Saldo disponible: ${Number.isFinite(resultingBalance)?resultingBalance.toFixed(3):'no disponible'} kg.`);
+  await bodega();
+ } finally {
+  CONSUME_STATE.pending=false;
+  if(submitButton&&document.body.contains(submitButton)){submitButton.disabled=false;submitButton.textContent='Registrar consumo';}
+ }
+}
 function produccion(){let rows=DB.producciones.map(x=>`<tr><td><b>COD ${x.cod}</b></td><td>${x.fecha}</td><td>${x.turno}</td><td>${x.compound_id}</td><td>${x.estado}</td><td><button class="btn" onclick="prodDetalle('${x.id}')">Abrir</button></td></tr>`).join('');document.getElementById('content').innerHTML=`<div class="toolbar"><button class="btn primary" onclick="nuevaProduccion()">＋ Nueva producción</button></div><div class="card"><h2>Producciones</h2><table><tr><th>COD</th><th>Fecha</th><th>Turno</th><th>Identificador compuesto</th><th>Estado</th><th></th></tr>${rows}</table></div>`}
 function nuevaProduccion(){modal('Crear producción',`<div class="form"><div><label>Fecha</label><input id="p_fecha" type="date"></div><div><label>Turno</label><select id="p_turno"><option>M</option><option>V</option><option>N</option></select></div><div><label>COD</label><input id="p_cod" placeholder="049"></div><div><label>Estado</label><select id="p_est"><option>PLANIFICADA</option><option>ABIERTA</option></select></div></div><div class="detail">MPCF construirá automáticamente el identificador compuesto: <b>fecha + turno + COD</b>. El operador seguirá viendo únicamente COD.</div><div class="toolbar"><button class="btn primary" onclick="guardarProduccion()">Crear producción</button></div>`)}
 function guardarProduccion(){let f=document.getElementById('p_fecha').value,t=document.getElementById('p_turno').value,c=document.getElementById('p_cod').value.padStart(3,'0');let d=new Date(f+'T00:00:00');let meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];let comp=String(d.getDate()).padStart(2,'0')+meses[d.getMonth()]+d.getFullYear()+t+c;let x={id:id('PROD'),fecha:f,turno:t,cod:c,estado:document.getElementById('p_est').value,compound_id:comp,nota:''};DB.producciones.push(x);save();closeModal();toast('COD '+c+' creado');produccion()}
