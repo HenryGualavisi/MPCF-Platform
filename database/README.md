@@ -34,12 +34,20 @@ Este repositorio conserva documentación y evidencia operativa del modelo de dat
 
 ### Preparada / pendiente de confirmación
 - MPCF-019 — SQL físico en repo; ejecución NO CONFIRMADA en este corte
+- MPCF-029 — archivo local preparado para Laboratorio, sin commit; ejecución NO CONFIRMADA
 
 ### SQL físicos actualmente presentes en GitHub
 - MPCF-016_REALTIME_CORE_V1.sql
 - MPCF-018_PROVIDER_MASTER_V1.sql
 - MPCF-019_RECEIPTION_TRANSACTION_V1.sql
 - MPCF-020_USER_CONTEXT_RPC_V1.sql
+- MPCF-021_RECEIPTION_TRANSACTION_ORGANIZATION_CONTEXT_V1.sql
+- MPCF-022_CONSUMPTION_TRANSACTION_V1.sql
+- MPCF-024_RECEPTION_AVAILABILITY_BRIDGE_V1.sql
+- MPCF-025_CONSUMPTION_TRANSACTION_MULTI_BIG_BAG_V1.sql
+- MPCF-026_PRODUCTION_V1.sql
+- MPCF-027_SEDIMENTACION_STAGE_V1.sql
+- MPCF-028_PRODUCTION_STAGE_UPDATE_V1.sql
 
 ## Regla crítica de documentación
 No se debe confundir:
@@ -59,3 +67,9 @@ La ausencia de archivo físico no significa que la migración no exista; signifi
 
 ## Nota de integridad documental
 Se documentan las ejecuciones confirmadas, pero no se reconstruyen SQL históricos sin evidencia. El repositorio refleja lo que existe físicamente y lo que se ha validado como ejecutado en Supabase.
+
+## CP14 — Laboratorio / Calidad
+
+`MPCF-029_LABORATORY_QUALITY_V1.sql` está PREPARADO localmente, sin commit y sin ejecución en Supabase. Agrega tablas de muestras, ensayos y resultados, valida el vínculo al subproceso existente y calcula LFW desde kg consumidos en `production_inputs`. Una muestra `VALIDADO` permanece consultable como histórico, pero sus resultados y estado quedan cerrados a cambios operativos. Reutiliza permisos existentes y no altera MPCF-025 ni el Stage Engine.
+
+La interfaz requiere exponer manualmente las seis RPCs públicas indicadas en `migrations/README.md`; no requiere exponer las tablas de Laboratorio directamente.
