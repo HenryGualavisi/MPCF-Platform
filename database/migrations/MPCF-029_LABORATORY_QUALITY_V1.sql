@@ -850,15 +850,15 @@ begin
     end if;
   end if;
 
-  update public.laboratory_samples
-  set analytical_status = p_status, updated_at = now()
-  where id = v_sample.id;
   update public.laboratory_tests
   set analytical_status = p_status,
       analyst_id = v_user,
       tested_at = coalesce(tested_at, now()),
       updated_at = now()
   where sample_id = v_sample.id;
+  update public.laboratory_samples
+  set analytical_status = p_status, updated_at = now()
+  where id = v_sample.id;
 
   return jsonb_build_object('sample_id', v_sample.id, 'analytical_status', p_status);
 end;

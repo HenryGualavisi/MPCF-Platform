@@ -18,6 +18,9 @@ Los archivos SQL presentes en esta carpeta son:
 - MPCF-026_PRODUCTION_V1.sql
 - MPCF-027_SEDIMENTACION_STAGE_V1.sql
 - MPCF-028_PRODUCTION_STAGE_UPDATE_V1.sql
+- MPCF-029_LABORATORY_QUALITY_V1.sql
+- MPCF-030_LABORATORY_COMPOSITION_CODE_FIX_V1.sql
+- MPCF-031_LABORATORY_REALTIME_HISTORY_V1.sql
 
 ## Distinción de estados
 
@@ -52,7 +55,9 @@ No se debe afirmar que una migración fue ejecutada solo porque existe un archiv
 - MPCF-018 — ejecutada en Supabase + SQL físico en GitHub
 - MPCF-019 — SQL físico en GitHub; ejecución no confirmada en este corte
 - MPCF-020 — ejecutada en Supabase + SQL físico en GitHub + validación funcional
-- MPCF-029 — archivo local preparado; sin commit; ejecución y validación funcional pendientes
+- MPCF-029 — SQL presente; ejecución y validación funcional pendientes de confirmar
+- MPCF-030 — SQL presente; ejecución y validación funcional pendientes de confirmar
+- MPCF-031 — SQL CP15 preparado; ejecución y validación funcional pendientes de confirmar
 
 ## Reglas de trabajo
 - no inventar SQL faltante
@@ -66,7 +71,7 @@ Este directorio refleja el estado real del repositorio: hay SQL físicos recuper
 
 ## MPCF-029 — LABORATORY / QUALITY V1
 
-Estado local: PREPARADO en un archivo sin commit; NO EJECUTADO ni VALIDADO en PostgreSQL.
+Estado local: SQL presente y PREPARADO; ejecución y validación funcional en PostgreSQL NO CONFIRMADAS.
 
 El archivo `MPCF-029_LABORATORY_QUALITY_V1.sql` agrega muestras, ensayos y resultados analíticos con RLS. La población de biomasa se verifica y pondera desde `production_inputs`, Big Bags y recepciones. Reutiliza `laboratorio.read`, `laboratorio.write` y `produccion.read`; no crea roles ni permissions y no modifica tablas, RPCs o etapas de Producción.
 
@@ -75,3 +80,11 @@ El cierre operativo de muestras validadas forma parte de este SQL preparado: los
 La interfaz consume seis RPCs públicas de Laboratorio/atributos oficiales. Como la exposición automática de la Data API está desactivada, esas funciones deben habilitarse explícitamente en la configuración de Supabase después de revisar y ejecutar la migración. Las tablas nuevas no se exponen directamente al navegador.
 
 Las pruebas de persistencia, RLS en Supabase y no regresión con datos reales siguen pendientes; el análisis estático local no sustituye esas validaciones.
+
+## MPCF-031 — CP15 Laboratory Realtime / History V1
+
+Estado local: PREPARADO; NO EJECUTADO ni VALIDADO en PostgreSQL. Requiere MPCF-029 aplicada.
+
+La migración incorpora las tablas CP14 de Laboratorio a la publicación `supabase_realtime`, clasifica el cierre del COD exclusivamente por la muestra `STAGE_OUTPUT` validada en el evento `EMPAQUE`, extiende la RPC `get_laboratory_orders()` con los datos de cierre y bloquea escrituras de muestras/resultados para COD completados. Concede únicamente `SELECT` a `authenticated` sobre las tres tablas analíticas porque Supabase Postgres Changes lo exige; las políticas RLS de organización y permisos existentes continúan limitando las filas visibles y no se crean políticas nuevas. Esto habilita lecturas directas bajo RLS por los usuarios autorizados del Data API. No cambia fórmula LFW, `composition_code` ni Producción. La interfaz usa los eventos Realtime existentes de consumo/producción y los eventos de las tablas de Laboratorio para actualizar el módulo sin recargas completas; el histórico presenta hasta 7 COD en modo solo lectura.
+
+La aplicación ordenada para validación real es MPCF-029, MPCF-030 (si su ejecución es requisito funcional de CP14), y MPCF-031. No se debe declarar ninguna ejecución sin confirmación en Supabase. La validación funcional CP15 requiere datos reales y permanece pendiente.
