@@ -22,6 +22,9 @@ Los archivos SQL presentes en esta carpeta son:
 - MPCF-030_LABORATORY_COMPOSITION_CODE_FIX_V1.sql
 - MPCF-031_LABORATORY_REALTIME_HISTORY_V1.sql
 - MPCF-033_FINISHED_PRODUCT_INVENTORY_V1.sql
+- MPCF-034_COD_IDENTIFIER_FULL_NUMBER_FIX_V1.sql
+- MPCF-035_PRODUCT_ISOL_V1.sql
+- MPCF-036_SALES_V1.sql
 
 ## Distinción de estados
 
@@ -60,6 +63,9 @@ No se debe afirmar que una migración fue ejecutada solo porque existe un archiv
 - MPCF-030 — SQL presente; ejecución y validación funcional pendientes de confirmar
 - MPCF-031 — SQL CP15 preparado; ejecución y validación funcional pendientes de confirmar
 - MPCF-033 — SQL MOD-007 preparado; ejecución y validación funcional pendientes de confirmar
+- MPCF-034 — SQL preparado; ejecución y validación funcional pendientes de confirmar
+- MPCF-035 — SQL Producto / ISOL V1 preparado; ejecución y validación funcional pendientes de confirmar
+- MPCF-036 — SQL MOD-011 Ventas V1 preparado; ejecución y validación funcional pendientes de confirmar
 
 ## Reglas de trabajo
 - no inventar SQL faltante
@@ -96,3 +102,15 @@ La aplicación ordenada para validación real es MPCF-029, MPCF-030 (si su ejecu
 Estado local: PREPARADO; NO EJECUTADO ni VALIDADO en PostgreSQL. Requiere MPCF-026 y MPCF-029.
 
 Crea `finished_products` y `finished_product_movements` (ENTRADA/SALIDA, solo inserción, sin saldo almacenado) y un trigger que registra la ENTRADA al completarse EMPAQUE con `packing_quantity_kg`, idempotente por evento. Lectura mediante `get_finished_product_inventory()` y `get_finished_product_movements(uuid)` con `produccion.read`. No modifica Producción ni Laboratorio, no carga EMPAQUEs históricos y no genera SALIDAS ni ISOL todavía. Puntos pendientes: permiso propio de Inventario, integración oficial de % CBD con Laboratorio, carga histórica y estructura ISOL.
+
+## MPCF-035 — PRODUCT / ISOL V1
+
+Estado local: PREPARADO; ejecución y validación funcional en PostgreSQL NO CONFIRMADAS. Requiere MPCF-033.
+
+Agrega `product_isol_operations` y `product_isol_consolidation_inputs`, sin reemplazar las tablas ni el ledger de MOD-007. `dispatch_finished_product(jsonb)` registra salidas de despacho; `consolidate_finished_products(jsonb)` valida y bloquea cada COD, registra sus salidas, crea un ISOL y registra su entrada dentro de una sola llamada transaccional. El código operacional se genera como `ISOL DDDYY` (día juliano y dos últimos dígitos del año de creación; p. ej. `ISOL 04126`); el UUID permanece solo como identidad técnica interna. Se permite un ISOL por organización y fecha, con rechazo explícito de otra consolidación ese mismo día. `get_product_isol_consolidation(uuid)` consulta las cantidades COD → ISOL. Se reutilizan `produccion.read` y `produccion.write`, se revoca acceso directo a las tablas y cada operación queda ligada a usuario, fecha, referencia y clave UUID idempotente. No se añaden atributos calculados al ISOL ni se modifican Producción, Laboratorio, Ventas o Genealogía. Los RPC requieren exposición manual y controlada en la Data API después de la revisión y ejecución.
+
+## MPCF-036 — MOD-011 SALES V1
+
+Estado local: PREPARADO; ejecución y validación funcional en PostgreSQL NO CONFIRMADAS. Requiere MPCF-035 para vincular las operaciones y movimientos reales de despacho.
+
+No se encontró un catálogo reutilizable de clientes ni pedidos de venta; crea únicamente `sales_customers` y `sales_orders`. Incluye RPC para registrar/consultar clientes y pedidos, aplicar transiciones de estado, consultar salidas completas disponibles y vincular una operación de despacho existente a un pedido. Reutiliza los permisos autorizados `ventas.read` y `ventas.write` sin asignarlos ni crear usuarios o roles. La venta no selecciona COD/ISOL ni escribe en `finished_products` o `finished_product_movements`; la vinculación conserva el ID de operación de Producto / ISOL, producto atendido e ID del movimiento de Inventario. Solo se admite g/kg y el despacho asociado debe igualar la cantidad total solicitada. Los RPC deben exponerse manualmente en la Data API luego de revisar y ejecutar la migración.

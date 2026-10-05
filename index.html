@@ -36,6 +36,7 @@ input,select,textarea{width:100%;padding:10px;background:#081923;color:#f1f7f9;b
 <button onclick="view('laboratorio',this)">🧪 Laboratorio</button>
 <button onclick="view('inventario',this)">▦ Inventario</button>
 <button onclick="view('productos',this)">◉ Productos / ISOL</button>
+<button onclick="view('ventas',this)">▤ Ventas</button>
 <button onclick="view('traza',this)">🔗 Trazabilidad</button>
 <button onclick="view('reportes',this)">▤ Reportes</button>
 </div></aside>
@@ -75,9 +76,9 @@ async function loadDashboardData(){const content=document.getElementById('conten
 function view(v,btn){
  if(!AUTH_STATE.session){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}
  document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('on')); if(btn)btn.classList.add('on');
- const map={inicio:['Centro operativo','Generación, captura, almacenamiento y trazabilidad'],cultivo:['Cultivo','Genealogía agrícola y lotes'],materia:['Materia Prima','Recepción y puente REF-EXT'],bodega:['Bodega de Disponibilidad','Existencias disponibles para consumo'],produccion:['Producción','Plan, ejecución, eventos y resultados'],laboratorio:['Laboratorio','Ensayos y resultados'],inventario:['Inventario','Producto terminado: existencias derivadas de movimientos'],productos:['Productos / ISOL','Productos terminados y aislados'],traza:['Trazabilidad','Reconstrucción de relaciones'],reportes:['Reportes','Información operacional y analítica']};
+ const map={inicio:['Centro operativo','Generación, captura, almacenamiento y trazabilidad'],cultivo:['Cultivo','Genealogía agrícola y lotes'],materia:['Materia Prima','Recepción y puente REF-EXT'],bodega:['Bodega de Disponibilidad','Existencias disponibles para consumo'],produccion:['Producción','Plan, ejecución, eventos y resultados'],laboratorio:['Laboratorio','Ensayos y resultados'],inventario:['Inventario','Producto terminado: existencias derivadas de movimientos'],productos:['Productos / ISOL','Productos terminados y aislados'],ventas:['Ventas','Pedidos y estado comercial'],traza:['Trazabilidad','Reconstrucción de relaciones'],reportes:['Reportes','Información operacional y analítica']};
  document.getElementById('title').textContent=map[v][0];document.getElementById('subtitle').textContent=map[v][1];
- ({inicio:inicio,cultivo:cultivo,materia:materia,bodega:bodega,produccion:produccion,laboratorio:laboratorio,inventario:inventario,productos:productos,traza:traza,reportes:reportes}[v])();
+ ({inicio:inicio,cultivo:cultivo,materia:materia,bodega:bodega,produccion:produccion,laboratorio:laboratorio,inventario:inventario,productos:productos,ventas:ventas,traza:traza,reportes:reportes}[v])();
 }
 async function inicio(){if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al panel operativo.');return;}await loadDashboardData();}
 function cultivo(){let rows=DB.cultivo.map(x=>`<tr><td><b>${esc(x.id)}</b></td><td>${esc(x.proveedor)}</td><td>${esc(x.variedad)}</td><td>${esc(x.siembra)}</td><td class="ok">${esc(x.estado)}</td><td>${esc(x.ref_ext)}</td><td><button class="btn" onclick="detalle('cultivo','${esc(x.id)}')">Abrir</button></td></tr>`).join('');
@@ -564,7 +565,148 @@ function renderLaboratoryContext(context){const order=context.production_order;c
 async function createLaboratorySample(orderId,eventId,sampleType,supplierId,lotId){const {error}=await AUTH_STATE.client.rpc('create_laboratory_sample',{p_payload:{production_order_id:orderId,production_process_event_id:eventId,sample_type:sampleType,supplier_organization_id:supplierId||null,agricultural_lot_id:lotId||null}});if(error){alert(error.message||'No se pudo registrar la muestra.');return;}await loadLaboratoryContext(orderId);}
 async function saveLaboratoryResults(sampleId,testId,sampleType,eventId){const context=LABORATORY_STATE.context;const sample=(context?.samples||[]).find(item=>item.id===sampleId);if(sample&&!laboratorySampleIsOperational(sample)){alert('La muestra está cerrada operativamente; no se pueden modificar sus resultados.');return;}if(!testId){alert('No se encontró el ensayo de la muestra.');return;}const stage=(context?.stages||[]).find(item=>item.id===eventId);const type=sampleType==='STAGE_OUTPUT'?(stage?.event_type||''):sampleType;const resultMap=laboratoryResultMap(sample);for(const [attributeCode] of (LABORATORY_ATTRIBUTES[type]||[])){const input=document.getElementById(`lab_value_${sampleId}_${attributeCode}`);const raw=input?.value.trim();if(raw==='')continue;const value=Number(raw);if(!Number.isFinite(value)||value<0||value>100){alert('Cada resultado debe ser numérico y estar entre 0 y 100.');return;}const evidence=document.getElementById(`lab_evidence_${sampleId}`)?.value.trim()||null;const {error}=await AUTH_STATE.client.rpc('save_laboratory_result',{p_payload:{test_id:testId,sample_id:sampleId,attribute_code:attributeCode,result_value:value,evidence_reference:evidence}});if(error){alert(error.message||'No se pudo guardar el resultado.');return;}resultMap[attributeCode]={result_value:value};}await loadLaboratoryContext(LABORATORY_STATE.orderId);}
 async function setLaboratoryStatus(sampleId,status){const sample=(LABORATORY_STATE.context?.samples||[]).find(item=>item.id===sampleId);if(sample&&!laboratorySampleIsOperational(sample)){alert('La muestra está cerrada operativamente y no puede volver a validarse.');return;}const {error}=await AUTH_STATE.client.rpc('set_laboratory_sample_status',{p_sample_id:sampleId,p_status:status});if(error){alert(error.message||'No se pudo actualizar el estado analítico.');return;}await loadLaboratoryContext(LABORATORY_STATE.orderId);}
-function productos(){let rows=DB.isol.map(x=>`<tr><td><b>${x.id}</b></td><td>${x.fecha}</td><td>${x.cantidad_g.toLocaleString()} g</td><td>${x.autorizado}</td><td class="ok">${x.estado}</td></tr>`).join('');document.getElementById('content').innerHTML=`<div class="card"><h2>Productos / ISOL</h2><p class="muted">ISOL es una capa de producto terminado, independiente del COD de producción.</p><table><tr><th>Identificador</th><th>Fecha</th><th>Cantidad</th><th>Autorización</th><th>Estado</th></tr>${rows}</table></div>`}
+async function productos(){await productIsolView();}
+const SALES_STATE={customers:[],orders:[],pending:false};
+const SALES_STATUSES=['PEDIDO REGISTRADO','EN PREPARACIÓN','LISTO PARA DESPACHO','DESPACHADO','CERRADO'];
+async function ventas(){
+ if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder a Ventas.');return;}
+ const content=document.getElementById('content');
+ content.innerHTML='<div class="card"><h2>VENTAS</h2><p class="muted">Consultando pedidos...</p></div>';
+ const [customersResult,ordersResult]=await Promise.all([
+  AUTH_STATE.client.rpc('get_sales_customers'),
+  AUTH_STATE.client.rpc('get_sales_orders',{p_status:null,p_customer_id:null,p_from_date:null,p_to_date:null})
+ ]);
+ if(customersResult.error||ordersResult.error){
+  const error=customersResult.error||ordersResult.error;
+  content.innerHTML='<div class="card"><h2>VENTAS</h2><p class="auth-warning">No se pudieron cargar los pedidos: '+esc(error.message)+'</p><p class="muted">Verifica que MPCF-036 esté preparada en Supabase y que estén habilitados los permisos ventas.read / ventas.write.</p></div>';
+  return;
+ }
+ SALES_STATE.customers=Array.isArray(customersResult.data)?customersResult.data:[];
+ SALES_STATE.orders=Array.isArray(ordersResult.data)?ordersResult.data:[];
+ renderSales();
+}
+function renderSales(){
+ const customerOptions=SALES_STATE.customers.map(customer=>'<option value="'+esc(customer.id)+'">'+esc(customer.legal_name)+'</option>').join('');
+ const statusOptions=SALES_STATUSES.map(status=>'<option value="'+esc(status)+'">'+esc(status)+'</option>').join('');
+ const rows=SALES_STATE.orders.map(order=>{
+  let action='<button class="btn" type="button" onclick="showSalesOrder(\''+esc(order.id)+'\')">Ver</button>';
+  if(order.status==='PEDIDO REGISTRADO')action+='<button class="btn" type="button" onclick="transitionSalesOrder(\''+esc(order.id)+'\',\'EN PREPARACIÓN\')">Pasar a preparación</button>';
+  if(order.status==='EN PREPARACIÓN')action+='<button class="btn" type="button" onclick="openSalesPreparation(\''+esc(order.id)+'\')">Registrar preparación / Marcar listo</button>';
+  if(order.status==='LISTO PARA DESPACHO')action+='<button class="btn primary" type="button" onclick="linkSalesDispatch(\''+esc(order.id)+'\')">Vincular despacho</button>';
+  if(order.status==='DESPACHADO'||order.status==='CERRADO')action+='<button class="btn" type="button" onclick="showSalesDispatch(\''+esc(order.id)+'\')">Ver despacho</button>';
+  if(order.status==='DESPACHADO')action+='<button class="btn" type="button" onclick="transitionSalesOrder(\''+esc(order.id)+'\',\'CERRADO\')">Cerrar</button>';
+  return '<tr><td>'+esc(order.order_number)+'</td><td>'+esc(order.customer_name)+'</td><td>'+esc(order.requested_product)+'</td><td>'+esc(order.quantity)+' '+esc(order.unit)+'</td><td>'+esc(order.status)+'</td><td>'+inventoryFmtDate(order.created_at)+'</td><td><div class="toolbar">'+action+'</div></td></tr>';
+ }).join('');
+ document.getElementById('content').innerHTML='<div class="card"><h2>VENTAS</h2><p class="muted">Ventas registra el pedido del cliente. Operaciones decide qué producto utilizar y registra el despacho en Producto / ISOL.</p><div class="toolbar"><button class="btn primary" type="button" onclick="openSalesOrderForm()" '+(SALES_STATE.customers.some(customer=>customer.status==='ACTIVO')?'':'disabled')+'>＋ NUEVO PEDIDO</button><button class="btn" type="button" onclick="openSalesCustomerForm()">＋ NUEVO CLIENTE</button><button class="btn" type="button" onclick="ventas()">Actualizar</button></div><div class="form"><div><label for="sales_filter_status">Estado</label><select id="sales_filter_status" onchange="filterSalesOrders()"><option value="">Todos</option>'+statusOptions+'</select></div><div><label for="sales_filter_customer">Cliente</label><select id="sales_filter_customer" onchange="filterSalesOrders()"><option value="">Todos</option>'+customerOptions+'</select></div><div><label for="sales_filter_from">Desde</label><input id="sales_filter_from" type="date" onchange="filterSalesOrders()"></div><div><label for="sales_filter_to">Hasta</label><input id="sales_filter_to" type="date" onchange="filterSalesOrders()"></div></div><div id="sales_orders_table" class="card"><table><thead><tr><th>Pedido</th><th>Cliente</th><th>Producto solicitado</th><th>Cantidad</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>'+rows+'</tbody></table>'+(rows?'':'<p class="muted">No hay pedidos para los filtros seleccionados.</p>')+'</div></div>';
+}
+async function filterSalesOrders(){
+ const status=document.getElementById('sales_filter_status')?.value||null;
+ const customer=document.getElementById('sales_filter_customer')?.value||null;
+ const fromDate=document.getElementById('sales_filter_from')?.value||null;
+ const toDate=document.getElementById('sales_filter_to')?.value||null;
+ const {data,error}=await AUTH_STATE.client.rpc('get_sales_orders',{p_status:status,p_customer_id:customer,p_from_date:fromDate,p_to_date:toDate});
+ if(error){alert('No se pudieron filtrar los pedidos: '+error.message);return;}
+ SALES_STATE.orders=Array.isArray(data)?data:[];
+ renderSales();
+ const statusFilter=document.getElementById('sales_filter_status');
+ const customerFilter=document.getElementById('sales_filter_customer');
+ const fromFilter=document.getElementById('sales_filter_from');
+ const toFilter=document.getElementById('sales_filter_to');
+ if(statusFilter)statusFilter.value=status||'';
+ if(customerFilter)customerFilter.value=customer||'';
+ if(fromFilter)fromFilter.value=fromDate||'';
+ if(toFilter)toFilter.value=toDate||'';
+}
+function openSalesCustomerForm(){
+ modal('NUEVO CLIENTE','<label for="sales_customer_name">Nombre / razón social</label><input id="sales_customer_name" maxlength="200" required><label for="sales_customer_identification">Identificación (opcional)</label><input id="sales_customer_identification" maxlength="100"><label for="sales_customer_contact">Contacto (opcional)</label><input id="sales_customer_contact" maxlength="300"><div class="toolbar"><button class="btn primary" type="button" onclick="submitSalesCustomer()">Guardar cliente</button></div>');
+}
+async function submitSalesCustomer(){
+ const name=document.getElementById('sales_customer_name')?.value.trim();
+ if(!name){alert('El nombre o razón social del cliente es obligatorio.');return;}
+ const {data,error}=await AUTH_STATE.client.rpc('create_sales_customer',{p_payload:{legal_name:name,identification:document.getElementById('sales_customer_identification')?.value.trim()||null,contact:document.getElementById('sales_customer_contact')?.value.trim()||null}});
+ if(error){alert('No se pudo registrar el cliente: '+error.message);return;}
+ closeModal();
+ await ventas();
+ openSalesOrderForm(data.id);
+}
+function openSalesOrderForm(selectedCustomerId=''){
+ const customers=SALES_STATE.customers.filter(customer=>customer.status==='ACTIVO');
+ if(!customers.length){alert('Registra primero un cliente activo.');return;}
+ const requestId=productIsolNewRequestId();
+ if(!requestId){alert('Este navegador no permite generar una clave segura para evitar duplicar el pedido.');return;}
+ const options=customers.map(customer=>'<option value="'+esc(customer.id)+'" '+(customer.id===selectedCustomerId?'selected':'')+'>'+esc(customer.legal_name)+'</option>').join('');
+ modal('NUEVO PEDIDO DE VENTA','<p class="muted">Registra la necesidad del cliente. Esta acción no reserva ni selecciona inventario.</p><input type="hidden" id="sales_order_request" value="'+requestId+'"><label for="sales_order_customer">Cliente</label><select id="sales_order_customer" required>'+options+'</select><label for="sales_order_product">Producto solicitado</label><input id="sales_order_product" maxlength="200" required><div class="form"><div><label for="sales_order_quantity">Cantidad</label><input id="sales_order_quantity" type="number" min="0" step="any" required></div><div><label for="sales_order_unit">Unidad</label><select id="sales_order_unit"><option value="g">g</option><option value="kg">kg</option></select></div></div><label for="sales_order_requirements">Requisitos / especificaciones</label><textarea id="sales_order_requirements" maxlength="4000"></textarea><label for="sales_order_observations">Observaciones</label><textarea id="sales_order_observations" maxlength="4000"></textarea><div class="toolbar"><button class="btn primary" type="button" onclick="submitSalesOrder()">Registrar pedido</button></div>');
+}
+async function submitSalesOrder(){
+ if(SALES_STATE.pending)return;
+ const customerId=document.getElementById('sales_order_customer')?.value;
+ const requestedProduct=document.getElementById('sales_order_product')?.value.trim();
+ const quantity=Number(document.getElementById('sales_order_quantity')?.value);
+ if(!customerId||!requestedProduct||!Number.isFinite(quantity)||quantity<=0){alert('Cliente, producto y cantidad mayor que cero son obligatorios.');return;}
+ const requestId=document.getElementById('sales_order_request')?.value;
+ if(!requestId){alert('No se encontró la clave de control del pedido. Cierra y vuelve a abrir el formulario.');return;}
+ SALES_STATE.pending=true;
+ const {data,error}=await AUTH_STATE.client.rpc('create_sales_order',{p_payload:{request_id:requestId,customer_id:customerId,requested_product:requestedProduct,quantity,unit:document.getElementById('sales_order_unit')?.value,requirements:document.getElementById('sales_order_requirements')?.value.trim()||null,observations:document.getElementById('sales_order_observations')?.value.trim()||null}});
+ SALES_STATE.pending=false;
+ if(error){alert('No se pudo registrar el pedido: '+error.message);return;}
+ closeModal();
+ await ventas();
+ alert('Pedido '+data.order_number+' registrado.');
+}
+async function transitionSalesOrder(orderId,nextStatus){
+ const {error}=await AUTH_STATE.client.rpc('transition_sales_order',{p_sales_order_id:orderId,p_next_status:nextStatus});
+ if(error){alert('No se pudo cambiar el estado del pedido: '+error.message);return;}
+ await ventas();
+}
+async function openSalesPreparation(orderId){
+ const order=SALES_STATE.orders.find(item=>item.id===orderId);
+ if(!order)return;
+ const {data,error}=await AUTH_STATE.client.rpc('get_sales_preparation_options',{p_sales_order_id:orderId});
+ if(error){alert('No se pudieron consultar los productos para preparación: '+error.message);return;}
+ const products=Array.isArray(data)?data:[];
+ if(!products.length){alert('No hay COD o ISOL con saldo disponible para seleccionar.');return;}
+ const options=products.map(item=>'<option value="'+esc(item.product_id)+'">'+esc(item.product_code)+' · '+esc(item.product_type)+'</option>').join('');
+ modal('PREPARACIÓN · PEDIDO '+esc(order.order_number),'<p>Selecciona el COD o ISOL que Operaciones preparó e ingresa la cantidad real preparada en '+esc(order.unit)+'. Esta cantidad se registra explícitamente y no se calcula desde el saldo de inventario. No se permiten preparaciones inferiores a '+esc(order.quantity)+' '+esc(order.unit)+'.</p><label for="sales_prepared_product">Producto preparado</label><select id="sales_prepared_product"><option value="">Selecciona un producto</option>'+options+'</select><label for="sales_prepared_quantity">Cantidad preparada ('+esc(order.unit)+')</label><input id="sales_prepared_quantity" type="number" min="'+esc(order.quantity)+'" step="any" placeholder="Ingrese la cantidad preparada"><div class="toolbar"><button class="btn primary" type="button" onclick="submitSalesPreparation(\''+esc(orderId)+'\')">Guardar preparación y marcar listo</button></div>');
+}
+async function submitSalesPreparation(orderId){
+ const order=SALES_STATE.orders.find(item=>item.id===orderId);
+ const productId=document.getElementById('sales_prepared_product')?.value;
+ const preparedQuantity=Number(document.getElementById('sales_prepared_quantity')?.value);
+ if(!order||!productId||!Number.isFinite(preparedQuantity)||preparedQuantity<order.quantity){alert('Selecciona el producto preparado e ingresa una cantidad igual o superior a la solicitada.');return;}
+ const {data,error}=await AUTH_STATE.client.rpc('complete_sales_preparation',{p_sales_order_id:orderId,p_prepared_product_id:productId,p_prepared_quantity:preparedQuantity});
+ if(error){alert('No se pudo registrar la preparación: '+error.message);return;}
+ closeModal();
+ await ventas();
+ alert(data.excess_quantity>0?'Pedido listo. EXCESO registrado: '+data.excess_quantity+' '+order.unit+'. Permanece como saldo del producto en Inventario MOD-007; no se crea otra entrada.':'Pedido listo. Preparación exacta; EXCESO 0.');
+}
+function showSalesOrder(orderId){
+ const order=SALES_STATE.orders.find(item=>item.id===orderId);
+ if(!order)return;
+ modal('PEDIDO '+esc(order.order_number),'<div class="detail"><b>Cliente:</b> '+esc(order.customer_name)+'<br><b>Producto solicitado:</b> '+esc(order.requested_product)+'<br><b>Cantidad:</b> '+esc(order.quantity)+' '+esc(order.unit)+'<br><b>Estado:</b> '+esc(order.status)+'<br><b>Registrado:</b> '+inventoryFmtDate(order.created_at)+' · '+esc(order.registered_by)+'<br><b>Inicio de preparación:</b> '+(order.preparation_started_at?inventoryFmtDate(order.preparation_started_at)+' · '+esc(order.preparation_started_by):'Pendiente')+'<br><b>Producto preparado:</b> '+esc(order.prepared_product_code||'Pendiente')+'<br><b>Cantidad preparada:</b> '+(order.prepared_quantity==null?'Pendiente':esc(order.prepared_quantity)+' '+esc(order.unit))+'<br><b>EXCESO:</b> '+(order.excess_quantity==null?'Pendiente':esc(order.excess_quantity)+' '+esc(order.unit))+'<br><b>Listo:</b> '+(order.ready_at?inventoryFmtDate(order.ready_at)+' · '+esc(order.ready_by):'Pendiente')+'<br><b>Despachado:</b> '+(order.dispatched_at?inventoryFmtDate(order.dispatched_at)+' · '+esc(order.dispatched_by):'Pendiente')+'<br><b>Cerrado:</b> '+(order.closed_at?inventoryFmtDate(order.closed_at)+' · '+esc(order.closed_by):'Pendiente')+'<br><b>Requisitos:</b> '+esc(order.requirements||'—')+'<br><b>Observaciones:</b> '+esc(order.observations||'—')+'</div>');
+}
+async function linkSalesDispatch(orderId){
+ const {data,error}=await AUTH_STATE.client.rpc('get_sales_dispatch_options',{p_sales_order_id:orderId});
+ if(error){alert('No se pudieron consultar los despachos compatibles: '+error.message);return;}
+ const options=Array.isArray(data)?data:[];
+ if(!options.length){alert('No hay un despacho completo de Producto / ISOL con la cantidad solicitada. Operaciones debe registrar primero la salida correspondiente; Ventas no modifica inventario.');return;}
+ const order=SALES_STATE.orders.find(item=>item.id===orderId);
+ const choices=options.map((item,index)=>'<option value="'+esc(item.operation_id)+'">'+esc(item.product_code)+' · '+esc(item.product_type)+' · '+esc(item.quantity_kg)+' kg · '+esc(item.reference)+' · '+inventoryFmtDate(item.created_at)+'</option>').join('');
+ modal('VINCULAR DESPACHO · PEDIDO '+esc(order?.order_number),'<p class="muted">Selecciona la salida ya registrada por Operaciones en Producto / ISOL. Solo se muestran movimientos que completan la cantidad del pedido.</p><select id="sales_dispatch_operation">'+choices+'</select><div class="toolbar"><button class="btn primary" type="button" onclick="submitSalesDispatchLink(\''+esc(orderId)+'\')">Confirmar despacho completo</button></div>');
+}
+async function submitSalesDispatchLink(orderId){
+ const operationId=document.getElementById('sales_dispatch_operation')?.value;
+ if(!operationId){alert('Selecciona un despacho registrado.');return;}
+ const {data,error}=await AUTH_STATE.client.rpc('register_sales_dispatch',{p_sales_order_id:orderId,p_product_isol_operation_id:operationId});
+ if(error){alert('No se pudo vincular el despacho: '+error.message);return;}
+ closeModal();
+ await ventas();
+ alert('Pedido '+data.order_number+' marcado DESPACHADO: '+data.product_code+' · '+data.quantity_kg+' kg.');
+}
+function showSalesDispatch(orderId){
+ const order=SALES_STATE.orders.find(item=>item.id===orderId);
+ if(!order||!order.dispatch_operation_id)return;
+ modal('DESPACHO · PEDIDO '+esc(order.order_number),'<div class="detail"><b>Producto atendido:</b> '+esc(order.finished_product_code)+'<br><b>Cantidad despachada:</b> '+esc(order.quantity)+' '+esc(order.unit)+'<br><b>Preparado:</b> '+esc(order.prepared_quantity)+' '+esc(order.unit)+'<br><b>EXCESO que permanece en saldo MOD-007:</b> '+esc(order.excess_quantity)+' '+esc(order.unit)+'<br><b>Referencia despacho:</b> '+esc(order.dispatch_reference||'—')+'<br><b>Operación Producto / ISOL:</b> '+esc(order.dispatch_operation_id)+'<br><b>Movimiento Inventario:</b> '+esc(order.inventory_movement_id)+'<br><b>Despachado:</b> '+inventoryFmtDate(order.dispatched_at)+' · '+esc(order.dispatched_by)+'<br><b>Cerrado:</b> '+(order.closed_at?inventoryFmtDate(order.closed_at)+' · '+esc(order.closed_by):'Pendiente')+'</div>');
+}
 function traza(){document.getElementById('content').innerHTML=`<div class="toolbar"><button class="btn primary" onclick="buscarTraza()">🔎 Reconstruir trazabilidad</button></div><div class="card"><h2>Consulta de trazabilidad</h2><p class="muted">La búsqueda es una función de una plataforma mayor. El objetivo es reconstruir relaciones, no solo mostrar datos.</p><input id="tq" value="ISOL 04126" placeholder="ISOL, COD, REF-EXT, lote..."><div id="trout"></div></div>`}
 function buscarTraza(){let q=document.getElementById('tq').value.trim().toLowerCase(),isol=DB.isol.find(x=>x.id.toLowerCase()===q);let prod=DB.producciones.filter(p=>DB.consumos.some(c=>c.produccion===p.id));let html='<div class="detail"><b>ISOL 04126</b> → '+prod.length+' producciones con consumos registrados → materia prima → REF-EXT → cultivo.</div>';document.getElementById('trout').innerHTML=html}
 function reportes(){document.getElementById('content').innerHTML=`<div class="cards"><div class="card"><div class="muted">kg disponibles</div><div class="num">${DB.disponibilidad.reduce((a,x)=>a+x.kg_disponibles,0).toFixed(3)}</div></div><div class="card"><div class="muted">kg consumidos</div><div class="num">${DB.consumos.reduce((a,x)=>a+x.kg,0).toFixed(3)}</div></div><div class="card"><div class="muted">cosechas</div><div class="num">${DB.cosechas.length}</div></div><div class="card"><div class="muted">puentes REF-EXT</div><div class="num">${DB.recepciones.filter(x=>x.ref_ext).length}</div></div></div><div class="card"><h2>Reporte de flujo de materiales</h2><table><tr><th>Etapa</th><th>Registros</th><th>Resultado</th></tr><tr><td>Cultivo</td><td>${DB.cultivo.length}</td><td>Genealogía agrícola</td></tr><tr><td>Cosecha</td><td>${DB.cosechas.length}</td><td>Materia prima de origen</td></tr><tr><td>Recepción</td><td>${DB.recepciones.length}</td><td>Ingreso a planta</td></tr><tr><td>Disponibilidad</td><td>${DB.disponibilidad.length}</td><td>Stock operacional</td></tr><tr><td>Consumo</td><td>${DB.consumos.length}</td><td>Materia prima asignada a producción</td></tr><tr><td>Producción</td><td>${DB.producciones.length}</td><td>Transformación</td></tr></table></div>`}
@@ -616,6 +758,98 @@ const productionDetailBeforeLaboratory=prodDetalle;
 productionLaboratoryPanel=function(data){const rows=[];const active=event=>event&&['ACTIVA','COMPLETADA'].includes(opValue(event.stage_status));const extraction=[['CBDA BIOMASA',data?.extraction?.attributes?.CBDA_BIOMASS],['CBD BIOMASA',data?.extraction?.attributes?.CBD_BIOMASS],['HUMEDAD BIOMASA',data?.extraction?.attributes?.MOISTURE_BIOMASS],['CBDA RESIDUO',data?.stage_results?.EXTRACCION?.CBDA_RESIDUE],['CBD RESIDUO',data?.stage_results?.EXTRACCION?.CBD_RESIDUE],['HUMEDAD RESIDUO',data?.stage_results?.EXTRACCION?.MOISTURE_RESIDUE],['CBDA EXTRACCIÓN',data?.stage_results?.EXTRACCION?.CBDA_EXTRACTION],['CBD EXTRACCIÓN',data?.stage_results?.EXTRACCION?.CBD_EXTRACTION]];if(active(PRODUCTION_STATE.event))rows.push(...extraction);if(active(PRODUCTION_STATE.decarboxilacionEvent))rows.push(['CBDA DESCARBOXILACIÓN',data?.stage_results?.DECARBOXILACION?.CBDA_DECARBOXYLATION],['CBD DESCARBOXILACIÓN',data?.stage_results?.DECARBOXILACION?.CBD_DECARBOXYLATION]);if(active(PRODUCTION_STATE.empaqueEvent))rows.push(['CBD EMPAQUE',data?.stage_results?.EMPAQUE?.CBD_PACKING]);if(!rows.length)return '';return `<div class="card" id="production_laboratory_attributes"><h3>ATRIBUTOS ANALÍTICOS · SOLO LECTURA</h3><table><thead><tr><th>Proceso</th><th>Resultado</th><th>Estado analítico</th></tr></thead><tbody>${rows.map(([label,item])=>`<tr><td>${esc(label)}</td><td>${item&&item.value!==null?esc(Number(item.value).toFixed(2))+' %':'Pendiente'}</td><td>${esc(item?.status||'PENDIENTE')}</td></tr>`).join('')}</tbody></table></div>`;};
 prodDetalle=async function(orderId){PRODUCTION_STATE.labOfficial=null;await productionDetailBeforeLaboratory(orderId);loadProductionLaboratoryAttributes(orderId);};
 async function loadProductionLaboratoryAttributes(orderId){if(!AUTH_STATE.client||!AUTH_STATE.session)return;const {data,error}=await AUTH_STATE.client.rpc('get_production_laboratory_attributes',{p_production_order_id:orderId});if(error){console.warn('Laboratory read-only attributes unavailable',error.message);return;}if(PRODUCTION_STATE.orderId!==orderId)return;PRODUCTION_STATE.labOfficial=data;const modalbox=document.getElementById('modalbox');if(!modalbox)return;document.getElementById('production_laboratory_attributes')?.remove();modalbox.insertAdjacentHTML('beforeend',productionLaboratoryPanel(data));}
+const PRODUCT_ISOL_STATE={pending:false};
+function productIsolNewRequestId(){return window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():null;}
+async function productIsolView(){
+ if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder a Productos / ISOL.');return;}
+ const box=document.getElementById('content');
+ box.innerHTML='<div class="card"><h2>PRODUCTO / ISOL</h2><p class="muted">Consultando existencias de Inventario...</p></div>';
+ const {data,error}=await AUTH_STATE.client.rpc('get_finished_product_inventory');
+ if(error){box.innerHTML='<div class="card"><h2>PRODUCTO / ISOL</h2><p class="auth-warning">No se pudo cargar el inventario: '+esc(error.message)+'</p><p class="muted">Verifica MPCF-033 y el permiso produccion.read.</p></div>';return;}
+ INVENTORY_STATE.items=Array.isArray(data)?data:[];
+ renderProductIsol();
+}
+function renderProductIsol(){
+ const items=INVENTORY_STATE.items.filter(item=>Number(item.balance_kg)>0);
+ const rows=items.map(item=>{
+  const productDate=item.production_date||item.entered_at;
+  const lineage=item.product_type==='ISOL'&&/^ISOL \d{5}$/.test(String(item.product_code))?'<button class="btn" type="button" onclick="productIsolShowLineage(\''+esc(item.id)+'\')">Origen COD</button>':'—';
+  return '<tr><td><b>'+esc(item.product_code)+'</b></td><td>'+esc(item.product_type)+'</td><td>'+formatKg(item.balance_kg)+' '+esc(item.unit)+'</td><td>'+(item.cbd_percent==null?'—':esc(Number(item.cbd_percent).toFixed(2))+' %')+'</td><td>'+esc(item.color||'—')+'</td><td>'+esc(item.status)+'</td><td>'+inventoryFmtDate(productDate)+'</td><td>'+lineage+'</td></tr>';
+ }).join('');
+ document.getElementById('content').innerHTML='<div class="card"><h2>PRODUCTO / ISOL</h2><p class="muted">Existencias consultadas desde MOD-007. El saldo se deriva de los movimientos; la selección del producto corresponde al operador.</p><div class="toolbar"><button class="btn primary" type="button" onclick="openProductIsolDispatch()" '+(items.length?'':'disabled')+'>DESPACHAR</button><button class="btn" type="button" onclick="openProductIsolConsolidation()" '+(items.some(item=>item.product_type==='COD')?'':'disabled')+'>CONSOLIDAR</button><button class="btn" type="button" onclick="productIsolView()">Actualizar</button></div>'+(items.length?'<table><thead><tr><th>Código</th><th>Tipo</th><th>Cantidad disponible</th><th>% CBD</th><th>Color</th><th>Estado</th><th>Fecha</th><th>Trazabilidad</th></tr></thead><tbody>'+rows+'</tbody></table>':'<p class="muted">No hay producto terminado disponible.</p>')+'</div>';
+}
+function openProductIsolDispatch(){
+ const items=INVENTORY_STATE.items.filter(item=>Number(item.balance_kg)>0);
+ if(!items.length){alert('No hay producto terminado disponible para despacho.');return;}
+ const requestId=productIsolNewRequestId();
+ if(!requestId){alert('Este navegador no permite generar una clave segura para evitar duplicar la operación.');return;}
+ const options=items.map(item=>'<option value="'+esc(item.id)+'">'+esc(item.product_code)+' · '+esc(item.product_type)+' · '+formatKg(item.balance_kg)+' '+esc(item.unit)+'</option>').join('');
+ modal('DESPACHAR PRODUCTO','<p class="muted">La salida se registrará en el Inventario existente. El saldo no se modifica manualmente.</p><input type="hidden" id="product_isol_dispatch_request" value="'+requestId+'"><label for="product_isol_dispatch_product">Producto</label><select id="product_isol_dispatch_product">'+options+'</select><label for="product_isol_dispatch_quantity">Cantidad (kg)</label><input id="product_isol_dispatch_quantity" type="number" min="0" step="any" required><label for="product_isol_dispatch_reference">Referencia de despacho / documento</label><input id="product_isol_dispatch_reference" maxlength="200" required><label for="product_isol_dispatch_observations">Observación (opcional)</label><textarea id="product_isol_dispatch_observations" maxlength="2000"></textarea><div class="toolbar"><button class="btn primary" type="button" onclick="submitProductIsolDispatch()">Confirmar despacho</button><button class="btn" type="button" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">Cancelar</button></div>');
+}
+async function submitProductIsolDispatch(){
+ if(PRODUCT_ISOL_STATE.pending)return;
+ const productId=document.getElementById('product_isol_dispatch_product')?.value;
+ const quantity=Number(document.getElementById('product_isol_dispatch_quantity')?.value);
+ const reference=document.getElementById('product_isol_dispatch_reference')?.value.trim();
+ const requestId=document.getElementById('product_isol_dispatch_request')?.value;
+ if(!productId||!Number.isFinite(quantity)||quantity<=0||!reference){alert('Selecciona producto, indica una cantidad mayor que cero y registra la referencia.');return;}
+ const selectedProduct=INVENTORY_STATE.items.find(item=>item.id===productId);
+ if(!selectedProduct||quantity>Number(selectedProduct.balance_kg)){alert('La cantidad no puede superar la disponibilidad actual del producto. Actualiza el inventario e inténtalo de nuevo.');return;}
+ PRODUCT_ISOL_STATE.pending=true;
+ const {data,error}=await AUTH_STATE.client.rpc('dispatch_finished_product',{p_payload:{request_id:requestId,finished_product_id:productId,quantity_kg:quantity,reference,observations:document.getElementById('product_isol_dispatch_observations')?.value.trim()||null}});
+ PRODUCT_ISOL_STATE.pending=false;
+ if(error){alert('No se pudo completar el despacho: '+error.message);return;}
+ document.getElementById('modal').classList.remove('show');
+ await productIsolView();
+ alert('Despacho registrado. Saldo disponible: '+formatKg(data.balance_kg)+' kg.');
+}
+function openProductIsolConsolidation(){
+ const cods=INVENTORY_STATE.items.filter(item=>item.product_type==='COD'&&Number(item.balance_kg)>0);
+ if(!cods.length){alert('No hay COD disponibles para consolidar.');return;}
+ const requestId=productIsolNewRequestId();
+ if(!requestId){alert('Este navegador no permite generar una clave segura para evitar duplicar la operación.');return;}
+ const rows=cods.map(item=>'<tr><td><input type="checkbox" style="width:auto" id="product_isol_select_'+esc(item.id)+'" onchange="productIsolToggleInput(\''+esc(item.id)+'\')"></td><td><b>'+esc(item.product_code)+'</b></td><td>'+formatKg(item.balance_kg)+' kg</td><td><input id="product_isol_quantity_'+esc(item.id)+'" type="number" min="0" step="any" max="'+esc(item.balance_kg)+'" disabled oninput="productIsolUpdateTotal()"></td></tr>').join('');
+ modal('CONSOLIDAR COD → GENERAR ISOL','<p class="muted">Selecciona uno o varios COD y registra la cantidad que el operador decidió utilizar de cada uno.</p><input type="hidden" id="product_isol_consolidate_request" value="'+requestId+'"><table><thead><tr><th>Usar</th><th>COD</th><th>Disponible</th><th>Cantidad a utilizar (kg)</th></tr></thead><tbody>'+rows+'</tbody></table><div class="detail"><b>Total seleccionado:</b> <span id="product_isol_total">0.000</span> kg</div><label for="product_isol_consolidate_reference">Referencia de consolidación</label><input id="product_isol_consolidate_reference" maxlength="200" required><label for="product_isol_consolidate_observations">Observación (opcional)</label><textarea id="product_isol_consolidate_observations" maxlength="2000"></textarea><div class="toolbar"><button class="btn primary" type="button" onclick="submitProductIsolConsolidation()">GENERAR ISOL</button><button class="btn" type="button" onclick="document.getElementById(\'modal\').classList.remove(\'show\')">Cancelar</button></div>');
+}
+function productIsolToggleInput(productId){
+ const checkbox=document.getElementById('product_isol_select_'+productId);
+ const quantity=document.getElementById('product_isol_quantity_'+productId);
+ if(quantity){quantity.disabled=!checkbox?.checked;if(!checkbox?.checked)quantity.value='';}
+ productIsolUpdateTotal();
+}
+function productIsolUpdateTotal(){
+ const total=[...document.querySelectorAll('[id^="product_isol_select_"]:checked')].reduce((sum,checkbox)=>{
+  const id=checkbox.id.slice('product_isol_select_'.length);
+  const quantity=Number(document.getElementById('product_isol_quantity_'+id)?.value);
+  return sum+(Number.isFinite(quantity)&&quantity>0?quantity:0);
+ },0);
+ const target=document.getElementById('product_isol_total');
+ if(target)target.textContent=total.toLocaleString('es-EC',{minimumFractionDigits:3,maximumFractionDigits:10});
+}
+async function submitProductIsolConsolidation(){
+ if(PRODUCT_ISOL_STATE.pending)return;
+ const selected=[...document.querySelectorAll('[id^="product_isol_select_"]:checked')];
+ const inputs=selected.map(checkbox=>{
+  const id=checkbox.id.slice('product_isol_select_'.length);
+  return {finished_product_id:id,quantity_kg:Number(document.getElementById('product_isol_quantity_'+id)?.value)};
+ });
+ const reference=document.getElementById('product_isol_consolidate_reference')?.value.trim();
+ if(!inputs.length||inputs.some(input=>!Number.isFinite(input.quantity_kg)||input.quantity_kg<=0)||!reference){alert('Selecciona al menos un COD, indica cantidades mayores que cero y registra la referencia.');return;}
+ if(inputs.some(input=>{const item=INVENTORY_STATE.items.find(product=>product.id===input.finished_product_id);return !item||input.quantity_kg>Number(item.balance_kg);})){alert('La cantidad de cada COD no puede superar su disponibilidad actual. Actualiza el inventario e inténtalo de nuevo.');return;}
+ PRODUCT_ISOL_STATE.pending=true;
+ const {data,error}=await AUTH_STATE.client.rpc('consolidate_finished_products',{p_payload:{request_id:document.getElementById('product_isol_consolidate_request')?.value,inputs,reference,observations:document.getElementById('product_isol_consolidate_observations')?.value.trim()||null}});
+ PRODUCT_ISOL_STATE.pending=false;
+ if(error){alert('No se pudo completar la consolidación: '+error.message);return;}
+ document.getElementById('modal').classList.remove('show');
+ await productIsolView();
+ alert('Consolidación registrada. Nuevo producto: '+data.product_code+' · '+formatKg(data.quantity_kg)+' kg.');
+}
+async function productIsolShowLineage(productId){
+ const {data,error}=await AUTH_STATE.client.rpc('get_product_isol_consolidation',{p_isol_product_id:productId});
+ if(error){modal('Origen del ISOL','<p class="auth-warning">'+esc(error.message)+'</p>');return;}
+ const inputs=(data.inputs||[]).map(input=>'<tr><td>'+esc(input.product_code)+'</td><td>'+formatKg(input.quantity_kg)+' kg</td></tr>').join('');
+ modal('Origen del ISOL','<div class="detail"><b>Referencia:</b> '+esc(data.reference)+'<br><b>Fecha/hora:</b> '+inventoryFmtDate(data.created_at)+'<br><b>Total generado:</b> '+formatKg(data.quantity_kg)+' kg</div><table><thead><tr><th>COD de origen</th><th>Cantidad utilizada</th></tr></thead><tbody>'+inputs+'</tbody></table>');
+}
 const INVENTORY_STATE={items:[]};
 async function inventario(){if(!AUTH_STATE.session||!AUTH_STATE.client){renderLoginScreen('Debes iniciar sesión para acceder al Inventario.');return;}const box=document.getElementById('content');box.innerHTML='<div class="card"><h2>INVENTARIO</h2><p class="muted">Cargando producto terminado...</p></div>';const {data,error}=await AUTH_STATE.client.rpc('get_finished_product_inventory');if(error){box.innerHTML='<div class="card"><h2>INVENTARIO</h2><p class="bad">No se pudo cargar el inventario: '+esc(error.message)+'</p><p class="muted">Verifica que MPCF-033 esté ejecutada en Supabase y que el usuario tenga permiso produccion.read.</p></div>';return;}INVENTORY_STATE.items=Array.isArray(data)?data:[];renderInventory();}
 function inventoryFmtDate(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?esc(v):d.toLocaleString('es-EC');}

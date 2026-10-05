@@ -94,3 +94,26 @@ Prueba confirmada:
 P19 → L2 → MERLOT → PILVICSA → cosecha 11-02-2026 → 626 kg biomasa fresca → recepción REC-20260211-001 → COD054 → 626 kg consumidos → 7.670 kg aislado → pureza 99.9% → ISOL 04126.
 
 No se presenta como producto empresarial cerrado ni como demo final sin validación real.
+
+## MPCF-035 — Producto / ISOL V1
+
+Estado del repositorio: PREPARADO; ejecución en Supabase y validación funcional real NO CONFIRMADAS. Requiere MPCF-033 (MOD-007). La interfaz de Productos / ISOL consulta existencias mediante `get_finished_product_inventory()` y no mantiene un saldo independiente ni utiliza los registros de demostración.
+
+Alcance funcional:
+- `dispatch_finished_product(jsonb)` registra un despacho como movimiento `SALIDA` en `finished_product_movements`.
+- `consolidate_finished_products(jsonb)` descuenta los COD seleccionados, registra sus cantidades de origen y crea un ISOL con movimiento `ENTRADA`, como una sola transacción.
+- `get_product_isol_consolidation(uuid)` expone el vínculo operativo ISOL → COD y las cantidades utilizadas.
+- Los RPC reutilizan `produccion.read` / `produccion.write`; las tablas nuevas no conceden acceso de escritura al navegador.
+- Idempotencia por clave UUID de solicitud, bloqueo concurrente de existencias, validación de cantidades y registro de usuario/fecha/referencia.
+- El código operacional de un nuevo ISOL sigue `ISOL DDDYY` (día juliano de creación y dos últimos dígitos del año); por ejemplo, `ISOL 04126`. El UUID se conserva únicamente como identidad técnica interna.
+- Se permite un ISOL por organización y fecha de creación; una segunda consolidación diaria se rechaza explícitamente para evitar códigos duplicados.
+
+`product_isol_operations` y `product_isol_consolidation_inputs` registran las operaciones y su relación COD → ISOL. Los saldos siguen derivados exclusivamente de los movimientos MOD-007. No se crea módulo de Ventas, recomendación ni genealogía paralela. Después de revisar y ejecutar la migración, los tres RPC nuevos deberán exponerse manualmente en la Data API, de acuerdo con la configuración existente.
+
+## MPCF-036 — MOD-011 Ventas V1
+
+Estado del repositorio: PREPARADO; ejecución y validación en Supabase NO CONFIRMADAS. Requiere las estructuras de despacho de MPCF-035. No se encontró un catálogo de clientes ni una estructura de pedidos reutilizable; MPCF-036 agrega únicamente `sales_customers` y `sales_orders`.
+
+Ventas registra cliente, producto solicitado, cantidad en g/kg, requisitos, observaciones y estado comercial. Cada pedido es independiente y parte como `PEDIDO REGISTRADO`; las transiciones son `EN PREPARACIÓN` → `LISTO PARA DESPACHO` → `DESPACHADO` → `CERRADO`. Operaciones registra explícitamente el producto y la cantidad preparada; el backend asigna responsables autenticados y timestamps. La preparación debe cubrir la cantidad solicitada; el EXCESO se calcula y conserva en el pedido.
+
+La operación de inventario permanece en Producto / ISOL. Ventas asocia un despacho existente del mismo producto preparado que completa la cantidad total del pedido y conserva referencias al producto, operación y movimiento de Inventario. No reserva, recomienda, crea COD/ISOL ni escribe en las tablas MOD-007. Si la preparación excede el pedido, el saldo remanente ya acreditado en MOD-007 es el EXCESO; no se crea una entrada duplicada. No se permiten despachos parciales ni edición posterior al cierre. RPC protegidas con `ventas.read` y `ventas.write`; dichos permisos quedan requeridos y no se asignan automáticamente. Las funciones deberán exponerse manualmente en la Data API tras la revisión y ejecución de la migración.
