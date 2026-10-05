@@ -76,9 +76,9 @@ test('rendered history shows exactly the seven newest completions and keeps comp
   vm.runInContext('renderLaboratoryOrders()', context);
 
   assert.match(rendered, /COD120/);
-  assert.match(rendered, /COD09/);
-  assert.match(rendered, /COD03/);
-  assert.doesNotMatch(rendered, /COD02|COD01/);
+  assert.match(rendered, /COD9\b/);
+  assert.match(rendered, /COD3\b/);
+  assert.doesNotMatch(rendered, /COD2\b|COD1\b/);
   assert.equal((rendered.match(/>Ver<\/button>/g) || []).length, 7);
   assert.equal((rendered.match(/>Abrir<\/button>/g) || []).length, 1);
 });

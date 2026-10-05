@@ -21,6 +21,7 @@ Los archivos SQL presentes en esta carpeta son:
 - MPCF-029_LABORATORY_QUALITY_V1.sql
 - MPCF-030_LABORATORY_COMPOSITION_CODE_FIX_V1.sql
 - MPCF-031_LABORATORY_REALTIME_HISTORY_V1.sql
+- MPCF-033_FINISHED_PRODUCT_INVENTORY_V1.sql
 
 ## Distinción de estados
 
@@ -58,6 +59,7 @@ No se debe afirmar que una migración fue ejecutada solo porque existe un archiv
 - MPCF-029 — SQL presente; ejecución y validación funcional pendientes de confirmar
 - MPCF-030 — SQL presente; ejecución y validación funcional pendientes de confirmar
 - MPCF-031 — SQL CP15 preparado; ejecución y validación funcional pendientes de confirmar
+- MPCF-033 — SQL MOD-007 preparado; ejecución y validación funcional pendientes de confirmar
 
 ## Reglas de trabajo
 - no inventar SQL faltante
@@ -88,3 +90,9 @@ Estado local: PREPARADO; NO EJECUTADO ni VALIDADO en PostgreSQL. Requiere MPCF-0
 La migración incorpora las tablas CP14 de Laboratorio a la publicación `supabase_realtime`, clasifica el cierre del COD exclusivamente por la muestra `STAGE_OUTPUT` validada en el evento `EMPAQUE`, extiende la RPC `get_laboratory_orders()` con los datos de cierre y bloquea escrituras de muestras/resultados para COD completados. Concede únicamente `SELECT` a `authenticated` sobre las tres tablas analíticas porque Supabase Postgres Changes lo exige; las políticas RLS de organización y permisos existentes continúan limitando las filas visibles y no se crean políticas nuevas. Esto habilita lecturas directas bajo RLS por los usuarios autorizados del Data API. No cambia fórmula LFW, `composition_code` ni Producción. La interfaz usa los eventos Realtime existentes de consumo/producción y los eventos de las tablas de Laboratorio para actualizar el módulo sin recargas completas; el histórico presenta hasta 7 COD en modo solo lectura.
 
 La aplicación ordenada para validación real es MPCF-029, MPCF-030 (si su ejecución es requisito funcional de CP14), y MPCF-031. No se debe declarar ninguna ejecución sin confirmación en Supabase. La validación funcional CP15 requiere datos reales y permanece pendiente.
+
+## MPCF-033 — MOD-007 FINISHED PRODUCT INVENTORY V1
+
+Estado local: PREPARADO; NO EJECUTADO ni VALIDADO en PostgreSQL. Requiere MPCF-026 y MPCF-029.
+
+Crea `finished_products` y `finished_product_movements` (ENTRADA/SALIDA, solo inserción, sin saldo almacenado) y un trigger que registra la ENTRADA al completarse EMPAQUE con `packing_quantity_kg`, idempotente por evento. Lectura mediante `get_finished_product_inventory()` y `get_finished_product_movements(uuid)` con `produccion.read`. No modifica Producción ni Laboratorio, no carga EMPAQUEs históricos y no genera SALIDAS ni ISOL todavía. Puntos pendientes: permiso propio de Inventario, integración oficial de % CBD con Laboratorio, carga histórica y estructura ISOL.

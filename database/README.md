@@ -37,6 +37,7 @@ Este repositorio conserva documentación y evidencia operativa del modelo de dat
 - MPCF-029 — SQL presente para Laboratorio; ejecución NO CONFIRMADA
 - MPCF-030 — SQL presente para composition_code; ejecución NO CONFIRMADA en este corte
 - MPCF-031 — SQL CP15 de realtime/histórico preparada; ejecución NO CONFIRMADA
+- MPCF-033 — SQL MOD-007 Inventario de Producto Terminado preparado; ejecución NO CONFIRMADA
 
 ### SQL físicos actualmente presentes en GitHub
 - MPCF-016_REALTIME_CORE_V1.sql
@@ -53,6 +54,7 @@ Este repositorio conserva documentación y evidencia operativa del modelo de dat
 - MPCF-029_LABORATORY_QUALITY_V1.sql
 - MPCF-030_LABORATORY_COMPOSITION_CODE_FIX_V1.sql
 - MPCF-031_LABORATORY_REALTIME_HISTORY_V1.sql
+- MPCF-033_FINISHED_PRODUCT_INVENTORY_V1.sql
 
 ## Regla crítica de documentación
 No se debe confundir:
