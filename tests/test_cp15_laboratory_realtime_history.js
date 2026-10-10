@@ -68,6 +68,7 @@ test('rendered history shows exactly the seven newest completions and keeps comp
     },
     document: { getElementById: () => ({ set innerHTML(value) { rendered = value; } }) },
     esc: value => String(value ?? ''),
+    codLabel: value => 'COD' + String(value).padStart(4, '0'),
     renderLaboratoryContext() {},
     updateLaboratoryRealtimeStatus() {}
   });
@@ -75,10 +76,10 @@ test('rendered history shows exactly the seven newest completions and keeps comp
   vm.runInContext(getFunctionDefinition('renderLaboratoryOrders'), context);
   vm.runInContext('renderLaboratoryOrders()', context);
 
-  assert.match(rendered, /COD120/);
-  assert.match(rendered, /COD9\b/);
-  assert.match(rendered, /COD3\b/);
-  assert.doesNotMatch(rendered, /COD2\b|COD1\b/);
+  assert.match(rendered, /COD0120/);
+  assert.match(rendered, /COD0009\b/);
+  assert.match(rendered, /COD0003\b/);
+  assert.doesNotMatch(rendered, /COD0002\b|COD0001\b/);
   assert.equal((rendered.match(/>Ver<\/button>/g) || []).length, 7);
   assert.equal((rendered.match(/>Abrir<\/button>/g) || []).length, 1);
 });

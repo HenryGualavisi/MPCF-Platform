@@ -1,10 +1,13 @@
-﻿const test = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execSync } = require('node:child_process');
 
-const read = f => fs.readFileSync(path.join(__dirname, '..', 'database', 'migrations', f), 'utf8').replace(/\r\n/g, '\n');
-const sql = read('MPCF-034_COD_IDENTIFIER_FULL_NUMBER_FIX_V1.sql');
+const root = path.join(__dirname, '..');
+const read = f => fs.readFileSync(path.join(root, 'database', 'migrations', f), 'utf8').replace(/\r\n/g, '\n');
+const m34 = read('MPCF-034_COD_IDENTIFIER_FULL_NUMBER_FIX_V1.sql');
+const m37 = read('MPCF-037_COD_CANONICAL_4DIGIT_V1.sql');
 const m29 = read('MPCF-029_LABORATORY_QUALITY_V1.sql');
 const m33 = read('MPCF-033_FINISHED_PRODUCT_INVENTORY_V1.sql');
 
@@ -14,42 +17,37 @@ const fnBody = (s, start) => {
 };
 const LAB = 'create or replace function public.create_laboratory_sample(p_payload jsonb)';
 const INV = 'create or replace function private.record_finished_product_entry_from_packing()';
+const noComments = s => s.split('\n').filter(l => !l.trim().startsWith('--')).join('\n');
 
-// Emulates the SQL expressions: 'COD' || v_cod::text [|| suffix]
-const sqlCode = (cod, suffix = '') => 'COD' + String(cod) + suffix;
-const sqlExpr = /'COD' \|\| v_cod::text( \|\| v_suffix)?/;
-
-test('MPCF-034 builds COD codes from the full number without padding', () => {
-  const cases = [[5, 'COD5'], [15, 'COD15'], [153, 'COD153'], [1984, 'COD1984'], [9999, 'COD9999'], [10000, 'COD10000']];
-  for (const [cod, expected] of cases) {
-    assert.equal(sqlCode(cod), expected);
-    assert.equal(sqlCode(cod, 'EMP'), expected + 'EMP');
-  }
-  assert.match(fnBody(sql, LAB), /v_test_code := 'COD' \|\| v_cod::text \|\| v_suffix;/);
-  assert.match(fnBody(sql, INV), /v_code := 'COD' \|\| v_cod::text;/);
-  assert.ok(sqlExpr.test(sql));
-});
-
-test('MPCF-034 contains no lpad/padStart/truncating logic in executable SQL', () => {
-  const code = sql.split('\n').filter(l => !l.trim().startsWith('--')).join('\n');
-  assert.doesNotMatch(code, /lpad|padStart|substr|left\(|right\(/i);
-});
-
-test('MPCF-034 functions equal the current ones except for the COD code line', () => {
-  const lab = fnBody(m29, LAB).replace("'COD' || lpad(v_cod::text, 2, '0') || v_suffix", "'COD' || v_cod::text || v_suffix");
-  const inv = fnBody(m33, INV).replace("'COD' || lpad(v_cod::text, 2, '0')", "'COD' || v_cod::text");
-  assert.equal(fnBody(sql, LAB), lab);
-  assert.equal(fnBody(sql, INV), inv);
-});
-
-test('MPCF-034 is a delta: no table/policy/trigger changes, no historical data fix', () => {
-  const code = sql.split('\n').filter(l => !l.trim().startsWith('--')).join('\n');
-  assert.doesNotMatch(code, /create table|alter table|create trigger|drop trigger|create policy|drop |delete from|\bupdate\s+public\./i);
-  assert.match(code, /MPCF-034/);
-});
-
-test('historical migrations MPCF-029 and MPCF-033 are left untouched in Git', () => {
-  const { execSync } = require('node:child_process');
-  const out = execSync('git status --short -- database/migrations/MPCF-029_LABORATORY_QUALITY_V1.sql', { cwd: path.join(__dirname, '..') }).toString();
+test('MPCF-034 stays as historical SQL (unmodified, superseded by MPCF-037)', () => {
+  const out = execSync('git status --short -- database/migrations/MPCF-034_COD_IDENTIFIER_FULL_NUMBER_FIX_V1.sql', { cwd: root }).toString();
   assert.equal(out.trim(), '');
+  assert.match(m34, /v_test_code := 'COD' \|\| v_cod::text \|\| v_suffix;/);
+});
+
+test('the current (4-digit) rule lives in MPCF-037, not in MPCF-034', () => {
+  assert.match(fnBody(m37, LAB), /v_test_code := 'COD' \|\| lpad\(v_cod::text, 4, '0'\) \|\| v_suffix;/);
+  assert.match(fnBody(m37, INV), /v_code := 'COD' \|\| lpad\(v_cod::text, 4, '0'\);/);
+  assert.doesNotMatch(noComments(m37), /'COD' \|\| v_cod::text/);
+});
+
+test('MPCF-037 functions equal MPCF-034 except for the 4-digit code and the 1..9999 guard', () => {
+  const guard = "  if v_cod is null or v_cod not between 1 and 9999 then\n    raise exception 'VALIDATION: cod must be between 1 and 9999';\n  end if;\n";
+  const lab = fnBody(m34, LAB)
+    .replace("'COD' || v_cod::text || v_suffix", "'COD' || lpad(v_cod::text, 4, '0') || v_suffix")
+    .replace("  if not found then raise exception 'VALIDATION: production stage not found'; end if;\n", "  if not found then raise exception 'VALIDATION: production stage not found'; end if;\n" + guard);
+  const inv = fnBody(m34, INV)
+    .replace("  if not found then return new; end if;\n", "  if not found then return new; end if;\n" + guard)
+    .replace("v_code := 'COD' || v_cod::text;", "v_code := 'COD' || lpad(v_cod::text, 4, '0');");
+  assert.equal(fnBody(m37, LAB), lab);
+  assert.equal(fnBody(m37, INV), inv);
+});
+
+test('historical migrations 029, 033, 034, 035 and 036 are left untouched in Git', () => {
+  for (const f of ['MPCF-029_LABORATORY_QUALITY_V1.sql', 'MPCF-033_FINISHED_PRODUCT_INVENTORY_V1.sql', 'MPCF-034_COD_IDENTIFIER_FULL_NUMBER_FIX_V1.sql', 'MPCF-035_PRODUCT_ISOL_V1.sql', 'MPCF-036_SALES_V1.sql']) {
+    const out = execSync(`git status --short -- database/migrations/${f}`, { cwd: root }).toString();
+    assert.equal(out.trim(), '', f);
+  }
+  assert.ok(m29.includes('lpad(v_cod::text, 2'));
+  assert.ok(m33.includes('lpad(v_cod::text, 2'));
 });
